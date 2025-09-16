@@ -1,5 +1,6 @@
 ﻿using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Emby.Server.Implementations;
 using Emby.Server.Implementations.AppBase;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -8,6 +9,8 @@ using MediaBrowser.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 using System.Runtime.Loader;
+using MethodAttributes = dnlib.DotNet.MethodAttributes;
+using MethodImplAttributes = dnlib.DotNet.MethodImplAttributes;
 
 namespace JellyfinLoaderStub
 {
@@ -54,58 +57,38 @@ namespace JellyfinLoaderStub
             ModuleContext modCtx = ModuleDef.CreateModuleContext();
             var impDllPath = Path.Combine(rootDir, "Emby.Server.Implementations.dll");
             ModuleDefMD module = ModuleDefMD.Load(impDllPath, modCtx);
+            ModuleDefMD thisModule = ModuleDefMD.Load(typeof(TestCIL).Module, modCtx);
             var importer = new Importer(module);
             var serverApplicationPaths = module.Find("Emby.Server.Implementations.ServerApplicationPaths", false)!;
+            var testCIL = thisModule.Find("JellyfinLoaderStub.TestCIL", false)!;
+            var tryLoadDLLMeth = testCIL.FindMethod(nameof(TestCIL.TryLoadDLL));
+            var meth1 = new MethodDefUser(tryLoadDLLMeth.Name, tryLoadDLLMeth.MethodSig, tryLoadDLLMeth.ImplAttributes, tryLoadDLLMeth.Attributes);
+
+            serverApplicationPaths.Methods.Add(meth1);
+            meth1.Body = new CilBody(tryLoadDLLMeth.Body.InitLocals, tryLoadDLLMeth.Body.Instructions, tryLoadDLLMeth.Body.ExceptionHandlers, tryLoadDLLMeth.Body.Variables);
 
             var ctor = serverApplicationPaths.Methods.First(m => m.IsInstanceConstructor);
 
             // remove old return
             ctor.Body.Instructions.RemoveAt(ctor.Body.Instructions.Count - 1);
 
-            // get main (entry assembly) load context
-            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(Assembly), "GetEntryAssembly", [])));
-            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(AssemblyLoadContext), "GetLoadContext", [typeof(Assembly)])));
-
-            // load dnlib manually
-            //ctor.Body.Instructions.Add(OpCodes.Dup.ToInstruction());
-            //ctor.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
-            //ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(BaseApplicationPaths), "get_PluginsPath", [])));
-            //ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("JellyfinLoader"));
-            //ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("dnlib.dll"));
-            //ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(Path), "Combine", [typeof(string), typeof(string), typeof(string)])));
-            //ctor.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(GetMethod(importer, typeof(AssemblyLoadContext), "LoadFromAssemblyPath", [typeof(string)])));
-            //ctor.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
-
-            // load harmony manually
-            //ctor.Body.Instructions.Add(OpCodes.Dup.ToInstruction());
-            //ctor.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
-            //ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(BaseApplicationPaths), "get_PluginsPath", [])));
-            //ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("JellyfinLoader"));
-            //ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("0Harmony.dll"));
-            //ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(Path), "Combine", [typeof(string), typeof(string), typeof(string)])));
-            //ctor.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(GetMethod(importer, typeof(AssemblyLoadContext), "LoadFromAssemblyPath", [typeof(string)])));
-            //ctor.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
-
-            // TODO: gracefully handle absence of jellyfinLoader plugin
-
-            // load main dll into main load context
+            // call TryLoadDLL
             ctor.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
             ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(BaseApplicationPaths), "get_PluginsPath", [])));
-            ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("JellyfinLoader"));
-            ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("JellyfinLoader.dll"));
-            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(Path), "Combine", [typeof(string), typeof(string), typeof(string)])));
-            ctor.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(GetMethod(importer, typeof(AssemblyLoadContext), "LoadFromAssemblyPath", [typeof(string)])));
+            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(serverApplicationPaths.FindMethod(nameof(TestCIL.TryLoadDLL))));
 
-            // invoke Bootstrap function
-            ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("JellyfinLoader.JellyfinLoader"));
-            ctor.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(GetMethod(importer, typeof(Assembly), "GetType", [typeof(string)])));
-            ctor.Body.Instructions.Add(OpCodes.Ldstr.ToInstruction("Bootstrap"));
-            ctor.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(GetMethod(importer, typeof(Type), "GetMethod", [typeof(string)])));
-            ctor.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
-            ctor.Body.Instructions.Add(OpCodes.Ldnull.ToInstruction());
-            ctor.Body.Instructions.Add(OpCodes.Callvirt.ToInstruction(GetMethod(importer, typeof(MethodBase), "Invoke", [typeof(object), typeof(object[])])));
-            ctor.Body.Instructions.Add(OpCodes.Pop.ToInstruction());
+            // new return
             ctor.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+
+            // https://github.com/0xd4d/dnlib/blob/master/Examples/Example2.cs
+            // https://pwn.report/2023/04/20/flareon9-writeups-p2.html
+            // https://github.com/0xd4d/dnlib/blob/master/src/DotNet/Emit/MethodUtils.cs
+            // GetMethodFlags(), FixCallTargets()
+
+            //ctor.Body.
+
+            //MethodBodyReader.CreateCilBody()
+            //ctor.Body.Variables.Add(new Local())
 
             // shouldn't be needed, but just to be sure
             ctor.Body.UpdateInstructionOffsets();

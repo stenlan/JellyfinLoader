@@ -137,6 +137,8 @@ namespace JellyfinLoader
                     }
                     catch (Exception ex)
                     {
+                        // TODO: early init logger
+                        Console.WriteLine(ex.ToString());
                         _logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", assembly.Location);
                         loaderManifest.Enabled = false;
                         SaveLoaderManifest(loaderManifest, pluginDir);
