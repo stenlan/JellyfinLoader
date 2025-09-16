@@ -12,8 +12,9 @@ Some plugins want to do things that aren't easily done by a normal Jellyfin plug
 // TODO. In short, it patches a DLL on disk that loads a different DLL very early in the Jellyfin startup process, then performs the necessary instrumentation.
 
 ## How do I use this??
-**If you are a Jellyfin user** and you are trying to install a plugin that depends on JellyfinLoader, simply install JellyfinLoader alongside that plugin.
-**If you are a Jellyfin plugin developer** read along.
+**If you are a Jellyfin user** and you are trying to install a plugin that depends on JellyfinLoader, simply install JellyfinLoader alongside that plugin. The repository URL is [https://raw.githubusercontent.com/stenlan/JellyfinLoader/refs/heads/main/repository.json](https://raw.githubusercontent.com/stenlan/JellyfinLoader/refs/heads/main/repository.json).
+
+**If you are a Jellyfin plugin developer**, read along.
 
 ### Using Harmony
 To use **Harmony**, simply link against **Lib.Harmony 2.4.1.0** and use Harmony like normal. JellyfinLoader will take care of the DLL being loaded.
