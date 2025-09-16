@@ -32,3 +32,16 @@ This will load your plugin into the main assembly context, and way before normal
 If you add a zero-parameter constructor to a class implementing the `IEarlyLoadPlugin` interface, that constructor will run very early ([just after `StartupHelpers#CreateApplicationPaths` in `Program#StartApp`](https://github.com/jellyfin/jellyfin/blob/db2dbaa62b85ba59ad2cfdcb99da71beb10cfe94/Jellyfin.Server/Program.cs#L89)).
 
 Additionally, you can implement `IEarlyLoadPlugin`'s `OnServerStart(bool coldStart)` function, which will run first thing on every call to [`Program#StartServer`](https://github.com/jellyfin/jellyfin/blob/db2dbaa62b85ba59ad2cfdcb99da71beb10cfe94/Jellyfin.Server/Program.cs#L157). The `coldStart` parameter denotes if this is the first time your `StartServer` hook was called during this run of the Jellyfin server executable, or a subsequent one. When the Jellyfin server is fully shutdown and restarted, `coldStart` will be true again. However, if the Jellyfin server is simply restarted through the web interface (or the underlying API endpoint), `coldStart` will be false. This can be useful for one-time initialization logic upon server start, like applying Harmony patches.
+
+## Limitations
+This plugin is still in its early stages, so expect bugs.
+
+Currently, Jellyfin breaks if JellyfinLoader is uninstalled/disabled after having installed it. This is because it patches some files on-disk when it is first installed. Uninstallation will be made easier in the future, but for now, after removing JellyfinLoader:
+- Shut down your Jellyfin server.
+- Go to your Jellyfin server directory
+- Delete `Emby.Server.Implementations.dll`
+- Rename the backup (`Emby.Server.Implementations.dll.bak`) that JellyfinLoader created back to `Emby.Server.Implementations.dll`.
+
+Additionally, only Jellyfin `10.10.7.0` is currently supported.
+
+Finally, any early loaded plugins (specified in their `loader.json` file), will not be unloaded and reloaded when soft restarting (through the web interface) because they are loaded into the main assembly context. 99% of the time, however, this isn't a problem at all.
