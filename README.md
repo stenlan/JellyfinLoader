@@ -37,12 +37,6 @@ Additionally, you can implement `IEarlyLoadPlugin`'s `OnServerStart(bool coldSta
 ## Limitations
 This plugin is still in its early stages, so expect bugs.
 
-Currently, Jellyfin breaks if JellyfinLoader is uninstalled/disabled after having installed it. This is because it patches some files on-disk when it is first installed. Uninstallation will be made easier in the future, but for now, after removing JellyfinLoader:
-- Shut down your Jellyfin server.
-- Go to your Jellyfin server directory
-- Delete `Emby.Server.Implementations.dll`
-- Rename the backup (`Emby.Server.Implementations.dll.bak`) that JellyfinLoader created back to `Emby.Server.Implementations.dll`.
+Currently, only Jellyfin `10.10.7.0` is supported.
 
-Additionally, only Jellyfin `10.10.7.0` is currently supported.
-
-Finally, any early loaded plugins (specified in their `loader.json` file), will not be unloaded and reloaded when soft restarting (through the web interface) because they are loaded into the main assembly context. 99% of the time, however, this isn't a problem at all.
+Additionally, any early loaded plugins (specified in their `loader.json` file), will not be unloaded and reloaded when soft restarting (through the web interface) because they are loaded into the main assembly context. 99% of the time, however, this isn't a problem at all.
