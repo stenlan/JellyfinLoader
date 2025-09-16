@@ -1,0 +1,20 @@
+[
+  {
+    "category": "Metadata",
+    "guid": "d524071f-b95c-452d-825e-c772f68b5957",
+    "name": "JellyfinLoader",
+    "description": "Custom Jellyfin plugin loader",
+    "owner": "stenlan",
+    "overview": "",
+    "versions": [
+      {
+        "checksum": "b3be21c21c7b797dcadf4e92523629f9",
+        "changelog": "",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/stenlan/JellyfinLoader/releases/download/v0.0.1-alpha/JellyfinLoader-0.0.1.zip",
+        "timestamp": "2025-09-16T00:00:00.0000000Z",
+        "version": "0.0.1.0"
+      }
+    ]
+  }
+]
