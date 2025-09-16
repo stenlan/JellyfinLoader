@@ -1,6 +1,6 @@
 [
   {
-    "category": "Metadata",
+    "category": "General",
     "guid": "d524071f-b95c-452d-825e-c772f68b5957",
     "name": "JellyfinLoader",
     "description": "Custom Jellyfin plugin loader",
