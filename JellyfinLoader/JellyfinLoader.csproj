@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.10.7" />
+    <PackageReference Include="Jellyfin.Model" Version="10.10.7" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Emby.Server.Implementations">
+      <HintPath>C:\Users\Sten\Downloads\jellyfin-10.10.7\Emby.Server.Implementations\bin\Debug\net8.0\Emby.Server.Implementations.dll</HintPath>
+    </Reference>
+    <Reference Include="jellyfin">
+      <HintPath>C:\Users\Sten\Downloads\jellyfin-10.10.7\Jellyfin.Server\bin\Debug\net8.0\jellyfin.dll</HintPath>
+    </Reference>
+    <Reference Include="Serilog.Extensions.Logging">
+      <HintPath>C:\Users\Sten\Downloads\jellyfin-10.10.7\Jellyfin.Server\bin\Debug\net8.0\Serilog.Extensions.Logging.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
