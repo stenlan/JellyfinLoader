@@ -17,5 +17,12 @@ namespace JellyfinLoader
         /// </summary>
         [JsonPropertyName("enabled")]
         public bool Enabled { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the collection of assemblies that should be loaded.
+        /// Paths are considered relative to the plugin folder.
+        /// </summary>
+        [JsonPropertyName("assemblies")]
+        public List<string> Assemblies { get; set; } = [];
     }
 }

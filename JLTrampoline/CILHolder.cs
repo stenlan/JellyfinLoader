@@ -10,7 +10,8 @@ using System.Text.Json;
 namespace JLTrampoline
 {
     /// <summary>
-    /// Class used for easy CIL generation when patching
+    /// Class used for easy CIL generation when patching.
+    /// Note: We CAN NOT reference members in the JLTrampoline namespace here, except for compile-time constants because they are directly inserted into the CIL as literals.
     /// </summary>
     internal class CILHolder
     {
@@ -40,7 +41,7 @@ namespace JLTrampoline
                 try
                 {
                     var manifest = JsonSerializer.Deserialize<PluginManifest>(File.ReadAllBytes(metaPath), _jsonOptions);
-                    if (manifest.Id.ToString() != "d524071f-b95c-452d-825e-c772f68b5957") continue;
+                    if (manifest.Id.ToString() != JLTrampoline.PluginId) continue;
 
                     var version = Version.Parse(manifest.Version);
                     if (maxMetaPath == null || version > maxVersion)
@@ -57,7 +58,7 @@ namespace JLTrampoline
 
             if (maxMetaPath != null)
             {
-                AssemblyLoadContext.GetLoadContext(Assembly.GetEntryAssembly()).LoadFromAssemblyPath(Path.Combine(Path.GetDirectoryName(maxMetaPath), "JellyfinLoader.dll")).GetType("JellyfinLoader.JellyfinLoader").GetMethod("Bootstrap").Invoke(null, null);
+                AssemblyLoadContext.GetLoadContext(Assembly.GetEntryAssembly()).LoadFromAssemblyPath(Path.Combine(Path.GetDirectoryName(maxMetaPath), JLTrampoline.MainAssemblyName)).GetType(JLTrampoline.MainFullType).GetMethod("Bootstrap").Invoke(null, null);
             }
         }
     }

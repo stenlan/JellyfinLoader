@@ -22,6 +22,7 @@ namespace JellyfinLoader
     {
         private const string _pluginMetaFileName = "meta.json";
         private const string _loaderMetaFileName = "loader.json";
+        private const string LoaderStubName = "JellyfinLoaderStub";
         private static readonly Version _minimumVersion = new Version(0, 0, 0, 1);
         private static readonly Version _appVersion = typeof(ApplicationHost).Assembly.GetName().Version!;
 
@@ -32,7 +33,8 @@ namespace JellyfinLoader
         private static bool _coldStart = true;
         private static ILogger? _loggerInstance;
         private static Dictionary<string, Assembly> earlyLoadedAssemblies = new Dictionary<string, Assembly>();
-        private static List<IEarlyLoadPlugin> earlyLoadPluginInterfaces = new();
+        private static Dictionary<string, Assembly> earlyLoadedJLStubs = new Dictionary<string, Assembly>();
+        private static List<object> earlyLoadPluginInstances = new();
 
         private static ILogger _logger {
             get {
@@ -92,26 +94,68 @@ namespace JellyfinLoader
                 // now we take control of the plugin
                 var localPlugin = ReadLocalPlugin(pluginDir);
 
-                if (!loaderManifest.Enabled) // disable the plugin in its own manifest too
+                if (!loaderManifest.Enabled) // disable the plugin in the jellyfin manifest too
                 {
                     localPlugin.Manifest.Status = PluginStatus.Disabled;
                     SavePluginManifest(localPlugin.Manifest, pluginDir);
                     continue;
                 }
 
-                var pluginDllFiles = TryGetPluginDlls(localPlugin);
-                var assemblies = new List<Assembly>(pluginDllFiles.Count);
+                var dllFilePaths = GetLoaderPluginDLLs(localPlugin, loaderManifest);
+                var jlStubPaths = dllFilePaths.Where(path => Path.GetFileName(path) == LoaderStubName + ".dll");
+
+                if (jlStubPaths.Count() != 1)
+                {
+                    _logger.LogError("Failed to load plugin {Path}; encountered {Count} JellyfinLoader stubs, expected 1. Disabling plugin.", pluginDir, jlStubPaths.Count());
+                    loaderManifest.Enabled = false;
+                    SaveLoaderManifest(loaderManifest, pluginDir);
+                    localPlugin.Manifest.Status = PluginStatus.Disabled;
+                    SavePluginManifest(localPlugin.Manifest, pluginDir);
+                    continue;
+                }
+
+                var jlStubPath = jlStubPaths.First()!;
+
+                var assemblies = new List<Assembly>(dllFilePaths.Count);
                 var loadedAll = true;
 
-                foreach (var file in pluginDllFiles)
+                foreach (var dllPath in dllFilePaths)
                 {
+                    if (dllPath == jlStubPath) // this is the JL Stub, skip adding it here as it is added from its referencing assemblies
+                    {
+                        continue;
+                    }
+
                     try
                     {
-                        assemblies.Add(alc.LoadFromAssemblyPath(file));
+                        var assembly = alc.LoadFromAssemblyPath(dllPath);
+
+                        foreach (var referencedAssembly in assembly.GetReferencedAssemblies())
+                        {
+                            if (referencedAssembly.Name == LoaderStubName) // references a JL stub
+                            {
+                                var stubLoaded = earlyLoadedJLStubs.TryGetValue(referencedAssembly.ToString(), out var stubAssembly);
+                                if (stubLoaded)
+                                {
+                                    earlyLoadedAssemblies.Add(jlStubPath, stubAssembly!);
+                                } else
+                                {
+                                    var newStubAssembly = alc.LoadFromAssemblyPath(jlStubPath);
+                                    if (newStubAssembly.GetName().ToString() != referencedAssembly.ToString())
+                                    {
+                                        throw new InvalidOperationException($"Failed to load plugin {pluginDir}; The plugin was built against a different JellyfinLoader stub than the binary that was shipped with it. It was built against \"{referencedAssembly}\", but the included binary is \"{newStubAssembly.GetName()}\".");
+                                    }
+                                    assemblies.Add(newStubAssembly);
+                                    earlyLoadedJLStubs.Add(referencedAssembly.ToString(), newStubAssembly);
+                                }
+                            }
+                        }
+
+                        assemblies.Add(assembly);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", file);
+                        _logger.LogError(ex, "Failed to load assembly {Path}. Disabling plugin.", dllPath);
                         loaderManifest.Enabled = false;
                         SaveLoaderManifest(loaderManifest, pluginDir);
 
@@ -132,12 +176,12 @@ namespace JellyfinLoader
                     {
                         // Load all required types to verify that the plugin will load
                         var assemblyTypes = assembly.GetTypes();
-                        earlyLoadPluginHandlerTypes.AddRange(assemblyTypes.Where(type => type.IsAssignableTo(typeof(IEarlyLoadPlugin))));
+                        earlyLoadPluginHandlerTypes.AddRange(assemblyTypes.Where(type => type.FullName == "JellyfinLoader.IEarlyLoadPlugin"));
                         earlyLoadedAssemblies.Add(assembly.Location, assembly);
                     }
                     catch (Exception ex)
                     {
-                        // TODO: early init logger
+                        // TODO: early init logger. Also maybe shut down server since it is now in an invalid state.
                         Console.WriteLine(ex.ToString());
                         _logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", assembly.Location);
                         loaderManifest.Enabled = false;
@@ -154,7 +198,7 @@ namespace JellyfinLoader
 
                 foreach (var earlyLoadPluginHandlerType in earlyLoadPluginHandlerTypes)
                 {
-                    earlyLoadPluginInterfaces.Add((IEarlyLoadPlugin)Activator.CreateInstance(earlyLoadPluginHandlerType));
+                    earlyLoadPluginInstances.Add(Activator.CreateInstance(earlyLoadPluginHandlerType));
                 }
 
                 localPlugin.Manifest.Status = PluginStatus.Active;
@@ -235,19 +279,20 @@ namespace JellyfinLoader
             return new LocalPlugin(dir, true, manifest);
         }
 
-        private static IReadOnlyList<string> TryGetPluginDlls(LocalPlugin plugin)
+        private static IReadOnlyList<string> GetLoaderPluginDLLs(LocalPlugin plugin, LoaderPluginManifest loaderManifest)
         {
             ArgumentNullException.ThrowIfNull(nameof(plugin));
 
-            IReadOnlyList<string> pluginDlls = Directory.GetFiles(plugin.Path, "*.dll", SearchOption.AllDirectories);
+            var pluginDlls = Directory.GetFiles(plugin.Path, "*.dll", SearchOption.AllDirectories);
+            var manifestAssemblies = new List<string>(plugin.Manifest.Assemblies);
+            manifestAssemblies.AddRange(loaderManifest.Assemblies);
 
-            IReadOnlyList<string> whitelistedDlls = Array.Empty<string>();
-            if (pluginDlls.Count > 0 && plugin.Manifest.Assemblies.Count > 0)
+            if (pluginDlls.Length > 0 && manifestAssemblies.Count > 0)
             {
                 // _logger.LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", plugin.Name);
 
                 var canonicalizedPaths = new List<string>();
-                foreach (var path in plugin.Manifest.Assemblies)
+                foreach (var path in manifestAssemblies)
                 {
                     var canonicalized = Path.Combine(plugin.Path, path).Canonicalize();
 
@@ -326,9 +371,9 @@ namespace JellyfinLoader
         private static void StartServerHook()
         {
             _logger.LogInformation("Server starting (ColdStart = {ColdStart})...", _coldStart);
-            foreach (var earlyLoadPluginInterface in earlyLoadPluginInterfaces)
+            foreach (var earlyLoadPluginInstance in earlyLoadPluginInstances)
             {
-                earlyLoadPluginInterface.OnServerStart(_coldStart);
+                earlyLoadPluginInstance.GetType().GetRuntimeMethod("OnServerStart", [typeof(bool)])?.Invoke(earlyLoadPluginInstance, [_coldStart]);
             }
             _coldStart = false;
         }
@@ -342,7 +387,7 @@ namespace JellyfinLoader
 
             if (isEarlyLoaded)
             {
-                _logger.LogInformation("Early loading {assemblyPath}", assemblyPath);
+                _logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
                 __result = earlyAssembly;
             }
 
