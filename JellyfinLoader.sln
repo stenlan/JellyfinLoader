@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36414.22
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JellyfinLoaderStub", "JellyfinLoaderStub\JellyfinLoaderStub.csproj", "{E8233667-38B9-E8A6-8755-704E4BF8B91B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JLTrampoline", "JLTrampoline\JLTrampoline.csproj", "{E8233667-38B9-E8A6-8755-704E4BF8B91B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JellyfinLoader", "JellyfinLoader\JellyfinLoader.csproj", "{0EB7322A-D6E6-456F-A13B-538B6A9D22EF}"
 EndProject

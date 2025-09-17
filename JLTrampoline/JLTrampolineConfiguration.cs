@@ -5,9 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JellyfinLoaderStub
+namespace JLTrampoline
 {
-    public class JellyfinLoaderStubConfiguration : BasePluginConfiguration
+    public class JLTrampolineConfiguration : BasePluginConfiguration
     {
     }
 }

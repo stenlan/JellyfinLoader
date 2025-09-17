@@ -2,17 +2,17 @@
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
 using MediaBrowser.Common.Plugins;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 
-namespace JellyfinLoaderStub
+namespace JLTrampoline
 {
-    internal class TestCIL : TestCILBase
+    /// <summary>
+    /// Class used for easy CIL generation when patching
+    /// </summary>
+    internal class CILHolder
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void TryLoadDLL(string PluginsPath)

@@ -1,6 +1,5 @@
 ﻿using dnlib.DotNet;
 using dnlib.DotNet.Emit;
-using Emby.Server.Implementations;
 using Emby.Server.Implementations.AppBase;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -9,17 +8,15 @@ using MediaBrowser.Model.Serialization;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 using System.Runtime.Loader;
-using MethodAttributes = dnlib.DotNet.MethodAttributes;
-using MethodImplAttributes = dnlib.DotNet.MethodImplAttributes;
 
-namespace JellyfinLoaderStub
+namespace JLTrampoline
 {
-    public class JellyfinLoaderStub : BasePlugin<JellyfinLoaderStubConfiguration>
+    public class JLTrampoline : BasePlugin<JLTrampolineConfiguration>
     {
         public override string Name => "JellyfinLoader";
         public override Guid Id => Guid.Parse("d524071f-b95c-452d-825e-c772f68b5957");
 
-        public JellyfinLoaderStub(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JellyfinLoaderStub> logger) : base(applicationPaths, xmlSerializer) {
+        public JLTrampoline(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JLTrampoline> logger) : base(applicationPaths, xmlSerializer) {
             var executingAssembly = Assembly.GetExecutingAssembly();
             var myDir = Path.GetDirectoryName(executingAssembly.Location)!;
             var mainAssemblyPath = Path.Combine(myDir, "JellyfinLoader.dll");
@@ -47,7 +44,7 @@ namespace JellyfinLoaderStub
             return importer.Import(methodBase);
         }
 
-        private static void PatchAndShutdown(ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JellyfinLoaderStub> logger)
+        private static void PatchAndShutdown(ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JLTrampoline> logger)
         {
             logger.LogInformation("Main DLL wasn't early loaded, patching Emby.Server.Implementations.dll...");
 
@@ -57,11 +54,11 @@ namespace JellyfinLoaderStub
             ModuleContext modCtx = ModuleDef.CreateModuleContext();
             var impDllPath = Path.Combine(rootDir, "Emby.Server.Implementations.dll");
             ModuleDefMD module = ModuleDefMD.Load(impDllPath, modCtx);
-            ModuleDefMD thisModule = ModuleDefMD.Load(typeof(TestCIL).Module, modCtx);
+            ModuleDefMD thisModule = ModuleDefMD.Load(typeof(CILHolder).Module, modCtx);
             var importer = new Importer(module);
             var serverApplicationPaths = module.Find("Emby.Server.Implementations.ServerApplicationPaths", false)!;
             var testCIL = thisModule.Find("JellyfinLoaderStub.TestCIL", false)!;
-            var tryLoadDLLMeth = testCIL.FindMethod(nameof(TestCIL.TryLoadDLL));
+            var tryLoadDLLMeth = testCIL.FindMethod(nameof(CILHolder.TryLoadDLL));
             var meth1 = new MethodDefUser(tryLoadDLLMeth.Name, tryLoadDLLMeth.MethodSig, tryLoadDLLMeth.ImplAttributes, tryLoadDLLMeth.Attributes);
 
             serverApplicationPaths.Methods.Add(meth1);
@@ -75,7 +72,7 @@ namespace JellyfinLoaderStub
             // call TryLoadDLL
             ctor.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
             ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(BaseApplicationPaths), "get_PluginsPath", [])));
-            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(serverApplicationPaths.FindMethod(nameof(TestCIL.TryLoadDLL))));
+            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(serverApplicationPaths.FindMethod(nameof(CILHolder.TryLoadDLL))));
 
             // new return
             ctor.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
