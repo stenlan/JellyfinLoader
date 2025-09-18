@@ -1,6 +1,8 @@
 ﻿using dnlib.DotNet;
 using dnlib.DotNet.Emit;
+using Emby.Server.Implementations;
 using Emby.Server.Implementations.AppBase;
+using Jellyfin.Server;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
@@ -19,23 +21,24 @@ namespace JLTrampoline
         internal const string MainFullType = "JellyfinLoader.JellyfinLoader";
         private const string DiskPatchAssemblyBackupName = "JellyfinLoaderBackup_DoNotDelete.dat";
 
+        // TODO: implement IPlugin#CanUninstall when there are dependencies still active
+
         public override string Name => "JellyfinLoader";
         public override Guid Id => Guid.Parse(PluginId);
 
-
-        public JLTrampoline(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JLTrampoline> logger) : base(applicationPaths, xmlSerializer) {
-            var executingAssembly = Assembly.GetExecutingAssembly();
-            var myDir = Path.GetDirectoryName(executingAssembly.Location)!;
+        public JLTrampoline(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JLTrampoline> logger) : base(applicationPaths, xmlSerializer) {            
+            var myAssembly = Assembly.GetExecutingAssembly();
+            var myDir = Path.GetDirectoryName(myAssembly.Location)!;
             var mainAssemblyPath = Path.Combine(myDir, MainAssemblyName);
 
             var entryAssembly = Assembly.GetEntryAssembly()!;
             var rootDir = Path.GetDirectoryName(entryAssembly.Location)!;
-            var patchDllTargetPath = Path.Combine(rootDir, "Emby.Server.Implementations.dll");
+            var patchDllTargetPath = Path.Combine(rootDir, "Serilog.Extensions.Logging.dll");
 
             // cleanup old file
             if (File.Exists(patchDllTargetPath + ".old")) File.Delete(patchDllTargetPath + ".old");
 
-            if (AssemblyLoadContext.GetLoadContext(Assembly.GetEntryAssembly()).Assemblies.Any(assembly => assembly.Location == mainAssemblyPath))
+            if (AssemblyLoadContext.GetLoadContext(entryAssembly).Assemblies.Any(assembly => assembly.Location == mainAssemblyPath))
             {
                 // main dll already loaded, nothing to do
                 return;
@@ -43,7 +46,7 @@ namespace JLTrampoline
 
             // we have been loaded through the normal jellyfin plugin load process (so not in main context), we want to patch and restart.
             // first, manually load dnlib into our own assembly load context
-            var alc = AssemblyLoadContext.GetLoadContext(executingAssembly)!;
+            var alc = AssemblyLoadContext.GetLoadContext(myAssembly)!;
 
             Assembly dnlibAssembly = alc.LoadFromAssemblyPath(Path.Combine(myDir, "dnlib.dll"));
             dnlibAssembly.GetTypes();
@@ -70,7 +73,7 @@ namespace JLTrampoline
             // TODO: sig checks?
             var backupDllPath = Path.Combine(rootDir, DiskPatchAssemblyBackupName);
             var backupExists = File.Exists(backupDllPath);
-            var patchDllTargetPath = Path.Combine(rootDir, "Emby.Server.Implementations.dll");
+            var patchDllTargetPath = Path.Combine(rootDir, "Serilog.Extensions.Logging.dll");
 
             if (backupExists && FileVersionInfo.GetVersionInfo(backupDllPath).FileVersion != FileVersionInfo.GetVersionInfo(patchDllTargetPath).FileVersion)
             {
@@ -89,26 +92,24 @@ namespace JLTrampoline
             var testCIL = thisModule.Find(typeof(CILHolder).FullName, false)!;
             var tryLoadDLLMeth = testCIL.FindMethod(nameof(CILHolder.TryLoadDLL));
 
-            var serverApplicationPaths = module.Find("Emby.Server.Implementations.ServerApplicationPaths", false)!;
+            var injectionType = module.Find("Serilog.Extensions.Logging.SerilogLoggerFactory", false)!;
             var loaderMethod = new MethodDefUser(tryLoadDLLMeth.Name, tryLoadDLLMeth.MethodSig, tryLoadDLLMeth.ImplAttributes, tryLoadDLLMeth.Attributes);
-            serverApplicationPaths.Methods.Add(loaderMethod);
+            injectionType.Methods.Add(loaderMethod);
             loaderMethod.Body = new CilBody(tryLoadDLLMeth.Body.InitLocals, tryLoadDLLMeth.Body.Instructions, tryLoadDLLMeth.Body.ExceptionHandlers, tryLoadDLLMeth.Body.Variables);
 
-            var ctor = serverApplicationPaths.Methods.First(m => m.IsInstanceConstructor);
+            var injectionMethod = injectionType.Methods.First(m => m.Name == "CreateLogger");
 
             // remove old return
-            ctor.Body.Instructions.RemoveAt(ctor.Body.Instructions.Count - 1);
+            injectionMethod.Body.Instructions.RemoveAt(injectionMethod.Body.Instructions.Count - 1);
 
             // call TryLoadDLL
-            ctor.Body.Instructions.Add(OpCodes.Ldarg_0.ToInstruction());
-            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(GetMethod(importer, typeof(BaseApplicationPaths), "get_PluginsPath", [])));
-            ctor.Body.Instructions.Add(OpCodes.Call.ToInstruction(serverApplicationPaths.FindMethod(nameof(CILHolder.TryLoadDLL))));
+            injectionMethod.Body.Instructions.Add(OpCodes.Call.ToInstruction(injectionType.FindMethod(nameof(CILHolder.TryLoadDLL))));
 
             // new return
-            ctor.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            injectionMethod.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
 
             // shouldn't be needed, but just to be sure
-            ctor.Body.UpdateInstructionOffsets();
+            injectionMethod.Body.UpdateInstructionOffsets();
 
             if (backupExists)
             {

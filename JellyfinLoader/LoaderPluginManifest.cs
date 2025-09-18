@@ -1,6 +1,4 @@
-﻿using MediaBrowser.Common.Plugins;
-using MediaBrowser.Model.Plugins;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace JellyfinLoader
 {
@@ -24,5 +22,11 @@ namespace JellyfinLoader
         /// </summary>
         [JsonPropertyName("assemblies")]
         public List<string> Assemblies { get; set; } = [];
+
+        /// <summary>
+        /// Gets or sets the collection of dependencies.
+        /// </summary>
+        [JsonPropertyName("dependencies")]
+        public List<DependencyInfo> Dependencies { get; set; } = [];
     }
 }

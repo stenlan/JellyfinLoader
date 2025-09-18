@@ -16,9 +16,12 @@ namespace JLTrampoline
     internal class CILHolder
     {
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void TryLoadDLL(string PluginsPath)
+        public static void TryLoadDLL()
         {
-            var metaPaths = Directory.EnumerateFiles(PluginsPath, "meta.json", SearchOption.AllDirectories);
+            var myAssembly = Assembly.GetExecutingAssembly();
+            var myDir = Path.GetDirectoryName(myAssembly.Location)!;
+            var pluginsDir = Directory.GetParent(myDir)!.FullName;
+            var metaPaths = Directory.EnumerateFiles(pluginsDir, "meta.json", SearchOption.AllDirectories);
             string? maxMetaPath = null;
             Version? maxVersion = null;
             var _jsonOptions = new JsonSerializerOptions(JsonDefaults.Options)
