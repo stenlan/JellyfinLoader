@@ -9,9 +9,6 @@ namespace JellyfinLoader.Helpers
 {
     internal class DependencyResolver
     {
-        // key is dependency Guid
-        private Dictionary<Guid, List<InternalDependencyInfo>> _dependencies = [];
-
         // key is plugin Guid
         private Dictionary<Guid, HashSet<InstalledPluginInfo>> _installedPlugins = [];
 
@@ -21,11 +18,12 @@ namespace JellyfinLoader.Helpers
             _pluginsDirectory = pluginsDirectory;
         }
 
-        public async Task ResolveAll()
+        public async Task<DependencyTree[]> ResolveAll()
         {
             var pluginDirs = Directory.EnumerateDirectories(_pluginsDirectory, "*.*", SearchOption.TopDirectoryOnly);
 
             // TODO: more thoroughly handle disabled states, conflicting versions, missing meta.jsons, etc
+            Dictionary<Guid, List<InternalDependencyInfo>> allDependencies = [];
 
             // first, discover all installed plugins and dependencies
             foreach (var pluginDir in pluginDirs)
@@ -41,13 +39,7 @@ namespace JellyfinLoader.Helpers
                     continue;
                 }
 
-                var hasEntry = _installedPlugins.TryGetValue(pluginManifest.Id, out var pluginInfos);
-                if (!hasEntry)
-                {
-                    _installedPlugins[pluginManifest.Id] = pluginInfos = [];
-                }
-
-                pluginInfos!.Add(new InstalledPluginInfo(pluginManifest.Id, pluginVersion!, pluginManifest.Status, pluginManifest.Name, pluginDir));
+                _installedPlugins.GetOrAdd(pluginManifest.Id, []).Add(new InstalledPluginInfo(pluginManifest.Id, pluginVersion!, pluginManifest.Status, pluginManifest.Name, pluginDir));
 
                 var loaderManifest = PluginHelper.ReadLoaderManifest(pluginDir);
                 if (loaderManifest == null) continue;
@@ -61,12 +53,7 @@ namespace JellyfinLoader.Helpers
                 }
 
                 loaderManifest.Dependencies.ForEach(d => {
-                    var hasEntry = _dependencies.TryGetValue(d.ID, out var dependencyInfos);
-                    if (!hasEntry)
-                    {
-                        _dependencies[d.ID] = dependencyInfos = [];
-                    }
-                    dependencyInfos!.Add(new InternalDependencyInfo(d.Manifest, d.ID, d.Versions, pluginManifest.Id));
+                    allDependencies.GetOrAdd(d.ID, []).Add(new InternalDependencyInfo(d.Manifest, d.ID, d.Versions, pluginManifest.Id));
                 });
             }
 
@@ -81,10 +68,12 @@ namespace JellyfinLoader.Helpers
                 }
             }
 
-            List<DependencyInfo> flatDependencies;
+            Dictionary<Guid, List<InternalDependencyInfo>> currentRoundDependencies = new(allDependencies);
+
+            List<DependencyInfo> missingDependencies;
 
             // attempt to install missing dependencies
-            while ((flatDependencies = ResolveFlat()).Count > 0)
+            while ((missingDependencies = FilterAndFlatten(currentRoundDependencies)).Count > 0)
             {
                 // TODO: smart dependency resolving:
                 // Dependencies might be required by multiple different plugins, and thus there might be several entries for the same dependency, with possibly different required versions.
@@ -93,46 +82,41 @@ namespace JellyfinLoader.Helpers
                 // We might be tempted to just pick a random one that satisfies all current dependencies, but it itself might then have dependencies that might
                 // conflict with others, etc. So we first need to build a full dependency tree before persisting any installs.
 
-                var installationResults = await Task.WhenAll(flatDependencies.Select(InstallDependency));
-                _dependencies.Clear();
+                var installationResults = await Task.WhenAll(missingDependencies.Select(InstallDependency));
+                currentRoundDependencies.Clear();
 
                 foreach (var installationResult in installationResults)
                 {
-                    var hasEntry = _installedPlugins.TryGetValue(installationResult.LocalPlugin.Id, out var pluginInfos);
-                    if (!hasEntry)
-                    {
-                        _installedPlugins[installationResult.LocalPlugin.Id] = pluginInfos = [];
-                    }
-                    pluginInfos!.Add(new InstalledPluginInfo(installationResult.LocalPlugin.Id,
-                                                             installationResult.LocalPlugin.Version,
-                                                             installationResult.LocalPlugin.Manifest.Status,
-                                                             installationResult.LocalPlugin.Name,
-                                                             installationResult.InstallDir));
+                    _installedPlugins.GetOrAdd(installationResult.LocalPlugin.Id, []).Add(
+                        new InstalledPluginInfo(installationResult.LocalPlugin.Id,
+                                                installationResult.LocalPlugin.Version,
+                                                installationResult.LocalPlugin.Manifest.Status,
+                                                installationResult.LocalPlugin.Name,
+                                                installationResult.InstallDir));
                     
                     installationResult.NewDependencies.ForEach(d => {
-                        var hasEntry = _dependencies.TryGetValue(d.ID, out var dependencyInfos);
-                        if (!hasEntry)
-                        {
-                            _dependencies[d.ID] = dependencyInfos = [];
-                        }
-                        dependencyInfos!.Add(new InternalDependencyInfo(d.Manifest, d.ID, d.Versions, installationResult.LocalPlugin.Id));
+                        var newDependencyInfo = new InternalDependencyInfo(d.Manifest, d.ID, d.Versions, installationResult.LocalPlugin.Id);
+                        allDependencies.GetOrAdd(d.ID, []).Add(newDependencyInfo);
+                        currentRoundDependencies.GetOrAdd(d.ID, []).Add(newDependencyInfo);
                     });
                 }
             }
+
+            // now construct the final dependency trees
         }
 
-        private List<DependencyInfo> ResolveFlat()
+        private List<DependencyInfo> FilterAndFlatten(Dictionary<Guid, List<InternalDependencyInfo>> dependencies)
         {
             // keep only missing dependencies, and flatten them to candidates?
 
-            var flattenedDependencies = new List<DependencyInfo>();
-            foreach (var (dependencyId, dependencyInfos) in _dependencies)
+            var result = new List<DependencyInfo>();
+            foreach (var (dependencyId, dependencyInfos) in dependencies)
             {
                 var isPluginInstalled = _installedPlugins.TryGetValue(dependencyId, out var pluginVersions);
 
                 if (!isPluginInstalled)
                 {
-                    flattenedDependencies.Add(FindCandidates(dependencyId));
+                    result.Add(FindCandidates(dependencies, dependencyId));
                     continue;
                 }
 
@@ -152,7 +136,7 @@ namespace JellyfinLoader.Helpers
 
                 if (!enabledVersions.Any()) // no matching versions, but none are enabled either, so we can just install a valid one
                 {
-                    flattenedDependencies.Add(FindCandidates(dependencyId));
+                    result.Add(FindCandidates(dependencies, dependencyId));
                     continue;
                 }
 
@@ -161,13 +145,13 @@ namespace JellyfinLoader.Helpers
                 throw new DependencyResolverException($"A dependency plugin {enabledVersions.First().Name} of version {enabledVersions.First().Version} was found, while a different one was required!");
             }
 
-            return flattenedDependencies;
+            return result;
         }
 
         // find candidates, which is the intersection of all supported versions
-        private DependencyInfo FindCandidates(Guid dependencyId)
+        private DependencyInfo FindCandidates(Dictionary<Guid, List<InternalDependencyInfo>> dependencies, Guid dependencyId)
         {
-            var dependencyInfos = _dependencies[dependencyId];
+            var dependencyInfos = dependencies[dependencyId];
             var versionCandidates = new HashSet<Version>(dependencyInfos[0].Versions);
             for (int i = 1; i < dependencyInfos.Count; i++)
             {

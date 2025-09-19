@@ -2,6 +2,7 @@
 using Emby.Server.Implementations.Plugins;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
+using MediaBrowser.Common.Plugins;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -55,6 +56,17 @@ namespace JellyfinLoader.Helpers
             HttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Json, 1.0));
             HttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Xml, 0.9));
             HttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*", 0.8));
+        }
+
+        public static TValue GetOrAdd<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, TValue value)
+        {
+            var hasEntry = dict.TryGetValue(key, out var outVar);
+            if (!hasEntry)
+            {
+                dict[key] = value;
+                return value;
+            }
+            return outVar!;
         }
     }
 }
