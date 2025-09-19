@@ -1,15 +1,20 @@
-﻿using Emby.Server.Implementations;
+﻿using CommandLine;
+using Emby.Server.Implementations;
+using Emby.Server.Implementations.AppBase;
 using Emby.Server.Implementations.Library;
 using Emby.Server.Implementations.Plugins;
+using Emby.Server.Implementations.Serialization;
 using HarmonyLib;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
 using Jellyfin.Server;
+using Jellyfin.Server.Helpers;
+using JellyfinLoader.Helpers;
 using JellyfinLoader.Models;
-using JellyfinLoader.Utils;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
+using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Logging;
 using Serilog.Extensions.Logging;
@@ -19,10 +24,11 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Serialization;
 
 namespace JellyfinLoader
 {
-    public class JellyfinLoader
+    public static class JellyfinLoader
     {
         private const string LoaderStubName = "JellyfinLoaderStub";
         private static bool _coldStart = true;
@@ -31,8 +37,6 @@ namespace JellyfinLoader
         private static List<object> earlyLoadPluginInstances = new();
         private static bool bootstrapRan = false;
         private static Harmony harmony;
-
-        internal static ILogger logger;
 
         [ModuleInitializer]
         internal static void ModuleInit()
@@ -56,8 +60,17 @@ namespace JellyfinLoader
             // prevent stack overflow due to recursion through createlogger injection, and prevent double bootstrapping altogether
             if (bootstrapRan) return;
             bootstrapRan = true;
-            logger = ((SerilogLoggerFactory)typeof(Program).GetField("_loggerFactory", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)).CreateLogger("JellyfinLoader");
-            logger.LogInformation("In bootstrap.");
+            var loggerFactory = ((SerilogLoggerFactory)typeof(Program).GetField("_loggerFactory", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
+            Utils.Logger = loggerFactory.CreateLogger("JellyfinLoader");
+            Utils.Logger.LogInformation("In bootstrap.");
+
+            var applicationPaths = StartupHelpers.CreateApplicationPaths(Parser.Default.ParseArguments<StartupOptions>(Environment.GetCommandLineArgs()).Value);
+            Utils.PluginsPath = applicationPaths.PluginsPath;
+
+            var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), null, (ServerConfiguration)ConfigurationHelper.GetXmlConfiguration(typeof(ServerConfiguration), applicationPaths.SystemConfigurationFilePath, new MyXmlSerializer()), Utils.PluginsPath, Utils.AppVersion);
+            typeof(PluginManager).GetField("_httpClientFactory", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(pluginManager, new JLHttpClientFactory());
+
+            Utils.PluginManager = pluginManager;
 
             harmony = new Harmony("com.github.stenlan.jellyfinloader");
             // we ONLY apply the StartServer hook here, to ensure that any other "early" code is running in the same state regardless of
@@ -68,30 +81,40 @@ namespace JellyfinLoader
         }
 
         // All plugins are unloaded at this point. Harmony is available.
-        private static void StartServerHook()
+        private static bool StartServerHook(ref Task __result)
         {
-            logger.LogInformation("Server starting (ColdStart = {ColdStart})...", _coldStart);
+            Utils.Logger.LogInformation("Server starting (ColdStart = {ColdStart})...", _coldStart);
 
             if (_coldStart)
             {
                 harmony.Patch(AccessTools.Method(typeof(AssemblyLoadContext), "LoadFromAssemblyPath"), prefix: new HarmonyMethod(LoadFromAssemblyPathHook));
             }
 
-            logger.LogInformation("Resolving dependencies...");
-            ResolveDependencies().Wait();
+            Utils.Logger.LogInformation("Resolving dependencies...");
+            try
+            {
+                ResolveDependencies();
+            }
+            catch (Exception ex)
+            {
+                Utils.Logger.LogError(ex, "Encountered an error during dependency resolving. Shutting down...");
+                typeof(Program).GetField("_restartOnShutdown", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, false);
+                __result = Task.CompletedTask;
+                return false;
+            }
 
             foreach (var earlyLoadPluginInstance in earlyLoadPluginInstances)
             {
                 earlyLoadPluginInstance.GetType().GetRuntimeMethod("OnServerStart", [typeof(bool)])?.Invoke(earlyLoadPluginInstance, [_coldStart]);
             }
             _coldStart = false;
+            return true;
         }
 
         /// <summary>
-        /// Called after Harmony has been loaded. Performs dependency resolving (and installation), and early loading. Also performs
-        /// required Harmony patches.
+        /// Called after Harmony has been loaded. Performs dependency resolving (and installation), and early loading of plugins.
         /// </summary>
-        private static async Task ResolveDependencies()
+        private static void ResolveDependencies()
         {
             var entryAssembly = Assembly.GetEntryAssembly()!;
             var alc = AssemblyLoadContext.GetLoadContext(entryAssembly)!;
@@ -100,102 +123,12 @@ namespace JellyfinLoader
             var myDir = Path.GetDirectoryName(myAssembly.Location)!;
             var pluginsDir = Directory.GetParent(myDir)!.FullName;
 
+            var dependencyResolver = new DependencyResolver(pluginsDir);
+
+            dependencyResolver.ResolveAll().Wait();
+
+            // make sure this happens after resolving dependencies, since it might have installed new plugins
             var pluginDirs = Directory.EnumerateDirectories(pluginsDir, "*.*", SearchOption.TopDirectoryOnly);
-            HashSet<LocalDependencyInfo> dependencies = [];
-            Dictionary<Guid, HashSet<InstalledPluginInfo>> installedPlugins = [];
-
-            // TODO: more thoroughly handle disabled states, conflicting versions, missing meta.jsons, etc
-
-            // first, discover all installed plugins and dependencies
-            foreach (var pluginDir in pluginDirs)
-            {
-                var pluginManifest = PluginHelper.ReadPluginManifest(pluginDir);
-                if (pluginManifest == null) continue;
-
-                var validVersion = Version.TryParse(pluginManifest.Version, out var pluginVersion);
-
-                if (!validVersion)
-                {
-                    logger.LogWarning("Plugin at {pluginDir} has an invalid version in its meta.json: {ver}. It is unsupported by JellyLoader both as a dependency and as a dependent.", pluginDir, pluginManifest.Version);
-                    continue;
-                }
-
-                var hasEntry = installedPlugins.TryGetValue(pluginManifest.Id, out var pluginInfos);
-                if (!hasEntry)
-                {
-                    installedPlugins[pluginManifest.Id] = pluginInfos = [];
-                }
-
-                pluginInfos!.Add(new InstalledPluginInfo(pluginManifest.Id, pluginVersion!, pluginManifest.Status, pluginManifest.Name, pluginDir));
-
-                var loaderManifest = PluginHelper.ReadLoaderManifest(pluginDir);
-                if (loaderManifest == null) continue;
-
-                // don't resolve or install dependencies for inactive plugins
-                if (pluginManifest.Status != PluginStatus.Active) continue;
-
-                if (loaderManifest.Dependencies.Any(d => d.Versions.Count > 1))
-                {
-                    logger.LogCritical("Currently, only a single version per dependency is supported. Shutting down...");
-                    // TODO: graceful exit
-                    Environment.Exit(1);
-                    return;
-                }
-
-                loaderManifest.Dependencies.ForEach(d => dependencies.Add(new LocalDependencyInfo(d.Manifest, d.ID, d.Versions, pluginManifest.Id)));
-            }
-
-            foreach (var pluginInfos in installedPlugins.Values)
-            {
-                var activeVersions = pluginInfos.Where(pluginInfo => pluginInfo.Status == PluginStatus.Active);
-
-                if (activeVersions.Count() > 1)
-                {
-                    var aVersion = activeVersions.First();
-                    var joinedPaths = new StringBuilder();
-                    foreach (var activeVersion in activeVersions)
-                    {
-                        joinedPaths.AppendLine(activeVersion.Path);
-                    }
-                    logger.LogWarning("Found multiple enabled versions of plugin with ID {pluginID} and possible name {name} at paths:\n{paths}", aVersion.ID, aVersion.Name, joinedPaths.ToString());
-                }
-            }
-
-            // find out which dependencies are missing
-            dependencies.RemoveWhere(dependency =>
-            {
-                var isPluginInstalled = installedPlugins.TryGetValue(dependency.ID, out var pluginVersions);
-                if (!isPluginInstalled) return false;
-
-                // TODO: check if different version _is_ installed and maybe required by other plugin or not, possibly update
-                var matchingVersions = pluginVersions!.Where(version => dependency.Versions.Contains(version.Version));
-
-                // no matching version installed
-                if (!matchingVersions.Any()) return false;
-
-                // matching version is installed but not active
-                if (!matchingVersions.Any(version => version.Status == PluginStatus.Active))
-                {
-                    logger.LogWarning("Dependency {depName} is required by {dependentName} and it is installed, but disabled!", matchingVersions.First().Name, installedPlugins[dependency.Dependent]!.First().Name);
-                }
-
-                return true;
-            });
-
-            var depResolver = new DependencyResolver();
-
-            // attempt to install missing dependencies
-            while (dependencies.Count > 0)
-            {
-                // TODO: smart dependency resolving:
-                // Dependencies might be required by multiple different plugins, and thus there might be several entries for the same dependency, with possibly different required versions.
-                // If they don't overlap, we are done and we cannot resolve the dependencies.
-                // If they do overlap, there might be multiple candidate versions for a dependency, we need to find out which one to install.
-                // We might be tempted to just pick a random one that satisfies all current dependencies, but it itself might then have dependencies that might
-                // conflict with others, etc. So we first need to build a full dependency tree before persisting any installs.
-
-                // var packages = PluginHelper.GetPackages()
-            }
 
             foreach (var pluginDir in pluginDirs)
             {
@@ -214,7 +147,7 @@ namespace JellyfinLoader
 
                 if (jlStubPaths.Count() != 1)
                 {
-                    logger.LogError("Failed to load plugin {Path}; encountered {Count} JellyfinLoader stubs, expected 1. Disabling plugin.", pluginDir, jlStubPaths.Count());
+                    Utils.Logger.LogError("Failed to load plugin {Path}; encountered {Count} JellyfinLoader stubs, expected 1. Disabling plugin.", pluginDir, jlStubPaths.Count());
                     localPlugin.Manifest.Status = PluginStatus.Disabled;
                     PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
                     continue;
@@ -261,7 +194,7 @@ namespace JellyfinLoader
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "Failed to load assembly {Path}. Disabling plugin.", dllPath);
+                        Utils.Logger.LogError(ex, "Failed to load assembly {Path}. Disabling plugin.", dllPath);
                         localPlugin.Manifest.Status = PluginStatus.Disabled;
                         PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
                         loadedAll = false;
@@ -284,8 +217,8 @@ namespace JellyfinLoader
                     }
                     catch (Exception ex)
                     {
-                        // TODO: maybe shut down server since it is now in an invalid state.
-                        logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", assembly.Location);
+                        // TODO: maybe shut down server if this was in main load context since server is now in an invalid state.
+                        Utils.Logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", assembly.Location);
                         localPlugin.Manifest.Status = PluginStatus.Disabled;
                         PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
                         loadedAll = false;
@@ -313,7 +246,7 @@ namespace JellyfinLoader
 
             if (isEarlyLoaded)
             {
-                logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
+                Utils.Logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
                 __result = earlyAssembly;
             }
 

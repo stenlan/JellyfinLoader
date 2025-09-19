@@ -6,19 +6,19 @@ namespace JellyfinLoader.Models
     {
 
         /// <summary>
-        /// Gets or sets the manifest URL.
+        /// The manifest URL at which the plugin can be downloaded.
         /// </summary>
         [JsonPropertyName("manifest")]
         public required string Manifest { get; set; }
 
         /// <summary>
-        /// Gets or sets the plugin ID.
+        /// The ID of the dependency plugin.
         /// </summary>
         [JsonPropertyName("id")]
         public required Guid ID { get; set; }
 
         /// <summary>
-        /// Gets or sets the supported plugin versions.
+        /// The supported plugin versions.
         /// </summary>
         [JsonPropertyName("version")]
         public required List<Version> Versions { get; set; }
