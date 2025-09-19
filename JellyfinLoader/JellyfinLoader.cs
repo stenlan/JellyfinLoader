@@ -5,6 +5,8 @@ using HarmonyLib;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
 using Jellyfin.Server;
+using JellyfinLoader.Models;
+using JellyfinLoader.Utils;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
@@ -42,7 +44,6 @@ namespace JellyfinLoader
 
             Assembly harmonyAssembly = alc.LoadFromAssemblyPath(Path.Combine(myDir, "0Harmony.dll"));
             harmonyAssembly.GetTypes();
-            Console.WriteLine("[JellyfinLoader] Loaded Harmony.");
         }
 
         /// <summary>
@@ -59,7 +60,7 @@ namespace JellyfinLoader
             logger.LogInformation("In bootstrap.");
 
             harmony = new Harmony("com.github.stenlan.jellyfinloader");
-            // we ONLY apply the StartServer hook here to ensure that any other "early" code is running in the same state regardless of
+            // we ONLY apply the StartServer hook here, to ensure that any other "early" code is running in the same state regardless of
             // Bootstrap() being called by the disk-patched DLL or the trampoline
             harmony.Patch(AccessTools.DeclaredMethod(typeof(Program), "StartServer"), prefix: new HarmonyMethod(StartServerHook));
             // TODO: should we prevent createPluginInstance? or should it run as normal? or maybe just once?

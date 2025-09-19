@@ -1,10 +1,11 @@
-﻿using System;
+﻿using JellyfinLoader.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace JellyfinLoader
+namespace JellyfinLoader.Utils
 {
     internal class DependencyResolver
     {

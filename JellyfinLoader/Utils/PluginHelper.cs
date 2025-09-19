@@ -1,25 +1,21 @@
 ﻿using Emby.Server.Implementations;
 using Emby.Server.Implementations.Library;
-using ICU4N.Logging;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
-using MediaBrowser.Common;
+using JellyfinLoader.Models;
 using MediaBrowser.Common.Extensions;
-using MediaBrowser.Common.Net;
 using MediaBrowser.Common.Plugins;
-using MediaBrowser.Controller;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Updates;
 using Microsoft.Extensions.Logging;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 
-namespace JellyfinLoader
+namespace JellyfinLoader.Utils
 {
     internal class PluginHelper
     {

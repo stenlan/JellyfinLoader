@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace JellyfinLoader
+namespace JellyfinLoader.Models
 {
     internal class LoaderPluginManifest
     {
