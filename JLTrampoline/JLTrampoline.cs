@@ -1,8 +1,5 @@
 ﻿using dnlib.DotNet;
 using dnlib.DotNet.Emit;
-using Emby.Server.Implementations;
-using Emby.Server.Implementations.AppBase;
-using Jellyfin.Server;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
@@ -11,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace JLTrampoline
 {
@@ -26,7 +24,8 @@ namespace JLTrampoline
         public override string Name => "JellyfinLoader";
         public override Guid Id => Guid.Parse(PluginId);
 
-        public JLTrampoline(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JLTrampoline> logger) : base(applicationPaths, xmlSerializer) {            
+        public JLTrampoline(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ISystemManager systemManager, IServerApplicationHost appHost, ILoggerFactory loggerFactory) : base(applicationPaths, xmlSerializer) {
+            var logger = loggerFactory.CreateLogger("JellyfinLoader");
             var myAssembly = Assembly.GetExecutingAssembly();
             var myDir = Path.GetDirectoryName(myAssembly.Location)!;
             var mainAssemblyPath = Path.Combine(myDir, MainAssemblyName);
@@ -44,7 +43,7 @@ namespace JLTrampoline
                 return;
             }
 
-            // we have been loaded through the normal jellyfin plugin load process (so not in main context), we want to patch and restart.
+            // the main DLL wasn't loaded early, so we want to patch and restart.
             // first, manually load dnlib into our own assembly load context
             var alc = AssemblyLoadContext.GetLoadContext(myAssembly)!;
 
@@ -52,7 +51,7 @@ namespace JLTrampoline
             dnlibAssembly.GetTypes();
 
             // then perform patching
-            PatchAndShutdown(systemManager, appHost, logger);
+            PatchAndRestart(systemManager, appHost, logger);
         }
 
         private static IMethod GetMethod(Importer importer, Type type, string method, Type[] types)
@@ -61,7 +60,7 @@ namespace JLTrampoline
             return importer.Import(methodBase);
         }
 
-        private static void PatchAndShutdown(ISystemManager systemManager, IServerApplicationHost appHost, ILogger<JLTrampoline> logger)
+        private static void PatchAndRestart(ISystemManager systemManager, IServerApplicationHost appHost, ILogger logger)
         {
             logger.LogInformation("Main DLL wasn't early loaded, patching Jellyfin...");
 

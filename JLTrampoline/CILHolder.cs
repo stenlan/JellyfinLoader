@@ -1,6 +1,9 @@
-﻿using Jellyfin.Data.Entities.Libraries;
+﻿using CommandLine;
+using Jellyfin.Data.Entities.Libraries;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
+using Jellyfin.Server;
+using Jellyfin.Server.Helpers;
 using MediaBrowser.Common.Plugins;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -18,9 +21,7 @@ namespace JLTrampoline
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void TryLoadDLL()
         {
-            var myAssembly = Assembly.GetExecutingAssembly();
-            var myDir = Path.GetDirectoryName(myAssembly.Location)!;
-            var pluginsDir = Directory.GetParent(myDir)!.FullName;
+            var pluginsDir = StartupHelpers.CreateApplicationPaths(Parser.Default.ParseArguments<StartupOptions>(Environment.GetCommandLineArgs()).Value).PluginsPath;
             var metaPaths = Directory.EnumerateFiles(pluginsDir, "meta.json", SearchOption.AllDirectories);
             string? maxMetaPath = null;
             Version? maxVersion = null;

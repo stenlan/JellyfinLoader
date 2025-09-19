@@ -15,12 +15,12 @@ namespace JellyfinLoader
         /// Gets or sets the plugin ID.
         /// </summary>
         [JsonPropertyName("id")]
-        public required string ID { get; set; }
+        public required Guid ID { get; set; }
 
         /// <summary>
-        /// Gets or sets the plugin version.
+        /// Gets or sets the supported plugin versions.
         /// </summary>
         [JsonPropertyName("version")]
-        public required string Version { get; set; }
+        public required List<Version> Versions { get; set; }
     }
 }

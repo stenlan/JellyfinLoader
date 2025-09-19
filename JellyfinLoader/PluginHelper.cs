@@ -1,11 +1,21 @@
 ﻿using Emby.Server.Implementations;
 using Emby.Server.Implementations.Library;
+using ICU4N.Logging;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
+using MediaBrowser.Common;
 using MediaBrowser.Common.Extensions;
+using MediaBrowser.Common.Net;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller;
 using MediaBrowser.Model.Plugins;
+using MediaBrowser.Model.Updates;
 using Microsoft.Extensions.Logging;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 
@@ -22,6 +32,13 @@ namespace JellyfinLoader
             WriteIndented = true
         };
 
+        // Jellyfin.Server.Startup
+        private static HttpClient HttpClient = new(new SocketsHttpHandler() {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(15),
+            AutomaticDecompression = DecompressionMethods.All,
+            RequestHeaderEncodingSelector = (_, _) => Encoding.UTF8,
+        });
+
         static PluginHelper() {
             for (int a = _jsonOptions.Converters.Count - 1; a >= 0; a--)
             {
@@ -31,6 +48,15 @@ namespace JellyfinLoader
                     break;
                 }
             }
+
+            HttpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(
+                "Jellyfin-Server",
+                _appVersion.ToString()
+            ));
+            // Jellyfin.Server.Startup
+            HttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Json, 1.0));
+            HttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Xml, 0.9));
+            HttpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*", 0.8));
         }
 
         internal static LocalPlugin ReadLocalPlugin(string dir)
@@ -110,7 +136,8 @@ namespace JellyfinLoader
             var manifestAssemblies = new List<string>(plugin.Manifest.Assemblies);
             manifestAssemblies.AddRange(loaderManifest.Assemblies);
 
-            if (pluginDlls.Length > 0 && manifestAssemblies.Count > 0)
+            // user loaderManifest.Assemblies for the whitelist check, but not for the actual returned assemblies
+            if (pluginDlls.Length > 0 && loaderManifest.Assemblies.Count > 0)
             {
                 // _logger.LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", plugin.Name);
 
@@ -143,6 +170,19 @@ namespace JellyfinLoader
                 return pluginDlls;
             }
         }
+        public static bool SaveManifests(string path, PluginManifest pluginManifest, LoaderPluginManifest loaderManifest)
+        {
+            try
+            {
+                File.WriteAllText(Path.Combine(path, _loaderMetaFileName), JsonSerializer.Serialize(loaderManifest, _jsonOptions));
+                File.WriteAllText(Path.Combine(path, _pluginMetaFileName), JsonSerializer.Serialize(pluginManifest, _jsonOptions));
+                return true;
+            }
+            catch (ArgumentException e)
+            {
+                return false;
+            }
+        }
 
         public static bool SavePluginManifest(PluginManifest manifest, string path)
         {
@@ -155,6 +195,25 @@ namespace JellyfinLoader
             catch (ArgumentException e)
             {
                 return false;
+            }
+        }
+
+        public static PluginManifest? ReadPluginManifest(string dir)
+        {
+            var metaFile = Path.Combine(dir, _pluginMetaFileName);
+            if (!File.Exists(metaFile)) return null;
+
+            try
+            {
+                byte[] data = File.ReadAllBytes(metaFile);
+                var manifest = JsonSerializer.Deserialize<PluginManifest>(data, _jsonOptions);
+
+                return manifest;
+            }
+            catch
+            {
+                JellyfinLoader.logger.LogError("Error reading plugin manifest at {metaFile}.", metaFile);
+                return null;
             }
         }
 
@@ -189,6 +248,77 @@ namespace JellyfinLoader
             {
                 return false;
             }
+        }
+
+        public static async Task<PackageInfo[]> GetPackages(string manifestUrl, bool filterIncompatible, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                PackageInfo[]? packages = await HttpClient
+                        .GetFromJsonAsync<PackageInfo[]>(new Uri(manifestUrl), _jsonOptions, cancellationToken).ConfigureAwait(false);
+
+                if (packages is null)
+                {
+                    return Array.Empty<PackageInfo>();
+                }
+
+                // Store the repository and repository url with each version, as they may be spread apart.
+                foreach (var entry in packages)
+                {
+                    for (int a = entry.Versions.Count - 1; a >= 0; a--)
+                    {
+                        var ver = entry.Versions[a];
+                        ver.RepositoryName = entry.Name;
+                        ver.RepositoryUrl = manifestUrl;
+
+                        if (!filterIncompatible)
+                        {
+                            continue;
+                        }
+
+                        if (!Version.TryParse(ver.TargetAbi, out var targetAbi))
+                        {
+                            targetAbi = _minimumVersion;
+                        }
+
+                        // Only show plugins that are greater than or equal to targetAbi.
+                        if (_appVersion >= targetAbi)
+                        {
+                            continue;
+                        }
+
+                        // Not compatible with this version so remove it.
+                        entry.Versions.Remove(ver);
+                    }
+                }
+
+                return packages;
+            }
+            catch (IOException ex)
+            {
+                JellyfinLoader.logger.LogError(ex, "Cannot locate the plugin manifest {Manifest}", manifestUrl);
+                return Array.Empty<PackageInfo>();
+            }
+            catch (JsonException ex)
+            {
+                JellyfinLoader.logger.LogError(ex, "Failed to deserialize the plugin manifest retrieved from {Manifest}", manifestUrl);
+                return Array.Empty<PackageInfo>();
+            }
+            catch (UriFormatException ex)
+            {
+                JellyfinLoader.logger.LogError(ex, "The URL configured for the plugin repository manifest URL is not valid: {Manifest}", manifestUrl);
+                return Array.Empty<PackageInfo>();
+            }
+            catch (HttpRequestException ex)
+            {
+                JellyfinLoader.logger.LogError(ex, "An error occurred while accessing the plugin manifest: {Manifest}", manifestUrl);
+                return Array.Empty<PackageInfo>();
+            }
+        }
+
+        public static DependencyInfo[] InstallPlugin(DependencyInfo info)
+        {
+            throw new NotImplementedException();
         }
     }
 }
