@@ -37,6 +37,8 @@ namespace JellyfinLoader.Helpers
 
         internal static string PluginsPath;
 
+        internal static readonly Version MinimumVersion = new Version(0, 0, 0, 1);
+
         static Utils()
         {
             for (int a = JsonOptions.Converters.Count - 1; a >= 0; a--)

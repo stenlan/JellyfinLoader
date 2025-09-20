@@ -6,7 +6,7 @@ namespace JellyfinLoader.Models
     {
 
         /// <summary>
-        /// The manifest URL at which the plugin can be downloaded.
+        /// The repository manifest URL at which the plugin can be downloaded.
         /// </summary>
         [JsonPropertyName("manifest")]
         public required string Manifest { get; set; }

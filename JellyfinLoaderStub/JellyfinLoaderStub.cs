@@ -34,7 +34,7 @@ namespace JellyfinLoaderStub
             }
 
             if (iPluginManager is not PluginManager pluginManager) throw new InvalidOperationException("JellyfinLoaderStub was provided an invalid IPluginManager instance.");
-            var plugins = (List<LocalPlugin>)typeof(PluginManager).GetField("_plugins", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(pluginManager)!;
+            var plugins = (List<LocalPlugin>)typeof(PluginManager).GetField("_plugins", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pluginManager)!;
 
             // if a compatible jellyfinLoader is already installed, we're done here.
             // even if it has been disabled, deleted, needs a restart, etc, because we don't want to strongarm users trying to

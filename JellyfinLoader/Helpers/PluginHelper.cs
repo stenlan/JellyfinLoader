@@ -17,7 +17,6 @@ namespace JellyfinLoader.Helpers
     {
         private const string _pluginMetaFileName = "meta.json";
         private const string _loaderMetaFileName = "loader.json";
-        private static readonly Version _minimumVersion = new Version(0, 0, 0, 1);
 
         // PluginManager#TryGetPluginDlls
         public static IReadOnlyList<string> GetLoaderPluginDLLs(LocalPlugin plugin, LoaderPluginManifest loaderManifest)
@@ -172,7 +171,7 @@ namespace JellyfinLoader.Helpers
 
                         if (!Version.TryParse(ver.TargetAbi, out var targetAbi))
                         {
-                            targetAbi = _minimumVersion;
+                            targetAbi = Utils.MinimumVersion;
                         }
 
                         // Only show plugins that are greater than or equal to targetAbi.
@@ -238,12 +237,12 @@ namespace JellyfinLoader.Helpers
                 {
                     if (!Version.TryParse(manifest.TargetAbi, out var targetAbi))
                     {
-                        targetAbi = _minimumVersion;
+                        targetAbi = Utils.MinimumVersion;
                     }
 
                     if (!Version.TryParse(manifest.Version, out version))
                     {
-                        manifest.Version = _minimumVersion.ToString();
+                        manifest.Version = Utils.MinimumVersion.ToString();
                     }
 
                     return new LocalPlugin(dir, Utils.AppVersion >= targetAbi, manifest);
@@ -281,7 +280,7 @@ namespace JellyfinLoader.Helpers
         }
 
         // InstallationManager#PerformPackageInstallation
-        public static async Task<PackageInstallationResult> PerformPackageInstallation(InstallationInfo package, PluginStatus status)
+        public static async Task<string> PerformPackageInstallation(InstallationInfo package, PluginStatus status)
         {
             if (!Path.GetExtension(package.SourceUrl.AsSpan()).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             {
@@ -333,7 +332,7 @@ namespace JellyfinLoader.Helpers
 
             Utils.PluginManager.ImportPluginFrom(targetDir);
 
-            return new PackageInstallationResult(ReadLoaderManifest(targetDir)?.Dependencies ?? [], targetDir, ReadLocalPlugin(targetDir));
+            return targetDir;
         }
     }
 }

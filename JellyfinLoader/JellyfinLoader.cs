@@ -177,7 +177,8 @@ namespace JellyfinLoader
                                 if (stubLoaded)
                                 {
                                     earlyLoadedAssemblies.Add(jlStubPath, stubAssembly!);
-                                } else
+                                }
+                                else
                                 {
                                     var newStubAssembly = alc.LoadFromAssemblyPath(jlStubPath);
                                     if (newStubAssembly.GetName().ToString() != referencedAssembly.ToString())
