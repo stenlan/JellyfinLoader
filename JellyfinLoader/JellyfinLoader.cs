@@ -1,105 +1,72 @@
-﻿using CommandLine;
-using Emby.Server.Implementations;
-using Emby.Server.Implementations.AppBase;
-using Emby.Server.Implementations.Library;
-using Emby.Server.Implementations.Plugins;
-using Emby.Server.Implementations.Serialization;
-using HarmonyLib;
-using Jellyfin.Extensions.Json;
-using Jellyfin.Extensions.Json.Converters;
+﻿using HarmonyLib;
 using Jellyfin.Server;
-using Jellyfin.Server.Helpers;
 using JellyfinLoader.Helpers;
-using JellyfinLoader.Models;
-using MediaBrowser.Common.Extensions;
-using MediaBrowser.Common.Plugins;
-using MediaBrowser.Controller;
-using MediaBrowser.Model.Configuration;
+using JellyfinLoader.Hooks;
 using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Logging;
-using Serilog.Extensions.Logging;
-using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
-using System.Text;
-using System.Text.Json;
-using System.Xml.Serialization;
 
 namespace JellyfinLoader
 {
-    public static class JellyfinLoader
+    public class JellyfinLoader
     {
         private const string LoaderStubName = "JellyfinLoaderStub";
-        private static bool _coldStart = true;
-        private static Dictionary<string, Assembly> earlyLoadedAssemblies = new Dictionary<string, Assembly>();
-        private static Dictionary<string, Assembly> earlyLoadedJLStubs = new Dictionary<string, Assembly>();
-        private static List<object> earlyLoadPluginInstances = new();
-        private static bool bootstrapRan = false;
-        private static Harmony harmony;
+        
+        private static JellyfinLoader? _instance;
+        public static JellyfinLoader Instance { get => _instance ?? throw new NullReferenceException("Attempted to access JellyfinLoader instance before its initialization."); }
+        private static bool _bootstrapRan = false;
+        
+        private bool _coldStart = true;
+        private readonly Dictionary<string, Assembly> earlyLoadedAssemblies = new Dictionary<string, Assembly>();
+        private readonly Dictionary<string, Assembly> earlyLoadedJLStubs = new Dictionary<string, Assembly>();
+        private readonly List<object> earlyLoadPluginInstances = new();
 
-        [ModuleInitializer]
-        internal static void ModuleInit()
+        private readonly Utils utils;
+        private readonly Harmony harmony;
+        private readonly PluginHelper pluginHelper;
+        private readonly DependencyResolver resolver;
+
+        private JellyfinLoader()
         {
-            // manually load harmony into main assembly load context
-            var entryAssembly = Assembly.GetEntryAssembly()!;
-            var myDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
-            var alc = AssemblyLoadContext.GetLoadContext(entryAssembly)!;
-
-            Assembly harmonyAssembly = alc.LoadFromAssemblyPath(Path.Combine(myDir, "0Harmony.dll"));
-            harmonyAssembly.GetTypes();
-        }
-
-        /// <summary>
-        /// Method called as early as possible by the disk-patched DLL, or once by the trampoline before soft restarting. Our DLL will be loaded into the main assembly load context.
-        /// This method is NOT called again after a soft restart, so we are free to load any DLLs into the main assembly load context and blindly apply runtime patches.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void Bootstrap()
-        {
-            // prevent stack overflow due to recursion through createlogger injection, and prevent double bootstrapping altogether
-            if (bootstrapRan) return;
-            bootstrapRan = true;
-            var loggerFactory = ((SerilogLoggerFactory)typeof(Program).GetField("_loggerFactory", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null));
-            Utils.Logger = loggerFactory.CreateLogger("JellyfinLoader");
-            Utils.Logger.LogInformation("In bootstrap.");
-
-            var applicationPaths = StartupHelpers.CreateApplicationPaths(Parser.Default.ParseArguments<StartupOptions>(Environment.GetCommandLineArgs()).Value);
-            Utils.PluginsPath = applicationPaths.PluginsPath;
-
-            var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), null, (ServerConfiguration)ConfigurationHelper.GetXmlConfiguration(typeof(ServerConfiguration), applicationPaths.SystemConfigurationFilePath, new MyXmlSerializer()), Utils.PluginsPath, Utils.AppVersion);
-            typeof(PluginManager).GetField("_httpClientFactory", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(pluginManager, new JLHttpClientFactory());
-
-            Utils.PluginManager = pluginManager;
+            utils = new Utils();
+            utils.Logger.LogInformation("In bootstrap.");
 
             harmony = new Harmony("com.github.stenlan.jellyfinloader");
             // we ONLY apply the StartServer hook here, to ensure that any other "early" code is running in the same state regardless of
             // Bootstrap() being called by the disk-patched DLL or the trampoline
-            harmony.Patch(AccessTools.DeclaredMethod(typeof(Program), "StartServer"), prefix: new HarmonyMethod(StartServerHook));
+            harmony.PatchCategory(Assembly.GetExecutingAssembly(), nameof(StartServerHook));
+
+            pluginHelper = new PluginHelper(utils);
+            resolver = new DependencyResolver(utils, pluginHelper);
+            
             // TODO: should we prevent createPluginInstance? or should it run as normal? or maybe just once?
             // harmony.Patch(AccessTools.Method(typeof(PluginManager), "CreatePluginInstance"), prefix: new HarmonyMethod(CreatePluginInstanceHook));
         }
 
-        // All plugins are unloaded at this point. Harmony is available.
-        private static bool StartServerHook(ref Task __result)
+        /// <summary>
+        /// StartServer method that is called by the StartServer hook.
+        /// </summary>
+        /// <returns>A boolean indicating whether or not the startup should continue (true), or the server should shut down (false).</returns>
+        internal bool StartServer()
         {
-            Utils.Logger.LogInformation("Server starting (ColdStart = {ColdStart})...", _coldStart);
+            utils.Logger.LogInformation("Server starting (ColdStart = {ColdStart})...", _coldStart);
 
             if (_coldStart)
             {
-                harmony.Patch(AccessTools.Method(typeof(AssemblyLoadContext), "LoadFromAssemblyPath"), prefix: new HarmonyMethod(LoadFromAssemblyPathHook));
+                harmony.PatchCategory(Assembly.GetExecutingAssembly(), nameof(LoadFromAssemblyPathHook));
             }
 
-            Utils.Logger.LogInformation("Resolving dependencies...");
+            utils.Logger.LogInformation("Resolving dependencies...");
             try
             {
                 ResolveDependencies();
             }
             catch (Exception ex)
             {
-                Utils.Logger.LogError(ex, "Encountered an error during dependency resolving. Shutting down...");
-                typeof(Program).GetField("_restartOnShutdown", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, false);
-                __result = Task.CompletedTask;
+                utils.Logger.LogError(ex, "Encountered an error during dependency resolving. Shutting down...");
+                typeof(Program).GetField("_restartOnShutdown", BindingFlags.Static | BindingFlags.NonPublic)!.SetValue(null, false);
                 return false;
             }
 
@@ -114,7 +81,7 @@ namespace JellyfinLoader
         /// <summary>
         /// Called after Harmony has been loaded. Performs dependency resolving (and installation), and early loading of plugins.
         /// </summary>
-        private static void ResolveDependencies()
+        private void ResolveDependencies()
         {
             var entryAssembly = Assembly.GetEntryAssembly()!;
             var alc = AssemblyLoadContext.GetLoadContext(entryAssembly)!;
@@ -123,16 +90,14 @@ namespace JellyfinLoader
             var myDir = Path.GetDirectoryName(myAssembly.Location)!;
             var pluginsDir = Directory.GetParent(myDir)!.FullName;
 
-            var dependencyResolver = new DependencyResolver(pluginsDir);
-
-            dependencyResolver.ResolveAll().Wait();
+            resolver.ResolveAll().Wait();
 
             // make sure this happens after resolving dependencies, since it might have installed new plugins
             var pluginDirs = Directory.EnumerateDirectories(pluginsDir, "*.*", SearchOption.TopDirectoryOnly);
 
             foreach (var pluginDir in pluginDirs)
             {
-                var loaderManifest = PluginHelper.ReadLoaderManifest(pluginDir);
+                var loaderManifest = pluginHelper.ReadLoaderManifest(pluginDir);
                 if (loaderManifest == null) continue;
 
                 if (loaderManifest.LoadControl != "EARLY") continue;
@@ -140,16 +105,16 @@ namespace JellyfinLoader
                 // TODO: handle non-early load plugins, and handle dependencies
 
                 // now we take control of the plugin
-                var localPlugin = PluginHelper.ReadLocalPlugin(pluginDir);
+                var localPlugin = pluginHelper.ReadLocalPlugin(pluginDir);
 
-                var dllFilePaths = PluginHelper.GetLoaderPluginDLLs(localPlugin, loaderManifest);
+                var dllFilePaths = pluginHelper.GetLoaderPluginDLLs(localPlugin, loaderManifest);
                 var jlStubPaths = dllFilePaths.Where(path => Path.GetFileName(path) == LoaderStubName + ".dll");
 
                 if (jlStubPaths.Count() != 1)
                 {
-                    Utils.Logger.LogError("Failed to load plugin {Path}; encountered {Count} JellyfinLoader stubs, expected 1. Disabling plugin.", pluginDir, jlStubPaths.Count());
+                    utils.Logger.LogError("Failed to load plugin {Path}; encountered {Count} JellyfinLoader stubs, expected 1. Disabling plugin.", pluginDir, jlStubPaths.Count());
                     localPlugin.Manifest.Status = PluginStatus.Disabled;
-                    PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
+                    pluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
                     continue;
                 }
 
@@ -195,9 +160,9 @@ namespace JellyfinLoader
                     }
                     catch (Exception ex)
                     {
-                        Utils.Logger.LogError(ex, "Failed to load assembly {Path}. Disabling plugin.", dllPath);
+                        utils.Logger.LogError(ex, "Failed to load assembly {Path}. Disabling plugin.", dllPath);
                         localPlugin.Manifest.Status = PluginStatus.Disabled;
-                        PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
+                        pluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
                         loadedAll = false;
                         break;
                     }
@@ -219,9 +184,9 @@ namespace JellyfinLoader
                     catch (Exception ex)
                     {
                         // TODO: maybe shut down server if this was in main load context since server is now in an invalid state.
-                        Utils.Logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", assembly.Location);
+                        utils.Logger.LogError(ex, "Failed to load assembly {Path}. Unknown exception was thrown. Disabling plugin", assembly.Location);
                         localPlugin.Manifest.Status = PluginStatus.Disabled;
-                        PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
+                        pluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
                         loadedAll = false;
                         break;
                     }
@@ -231,52 +196,53 @@ namespace JellyfinLoader
 
                 foreach (var earlyLoadPluginHandlerType in earlyLoadPluginHandlerTypes)
                 {
-                    earlyLoadPluginInstances.Add(Activator.CreateInstance(earlyLoadPluginHandlerType));
+                    earlyLoadPluginInstances.Add(Activator.CreateInstance(earlyLoadPluginHandlerType)!);
                 }
 
                 localPlugin.Manifest.Status = PluginStatus.Active;
-                PluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
+                pluginHelper.SaveManifests(pluginDir, localPlugin.Manifest, loaderManifest);
             }
         }
 
-        private static bool LoadFromAssemblyPathHook(AssemblyLoadContext __instance, string assemblyPath, ref Assembly __result)
+        internal Assembly? LoadFromAssemblyPath(string assemblyPath)
         {
-            if (__instance is not PluginLoadContext instance) return true;
-
             var isEarlyLoaded = earlyLoadedAssemblies.TryGetValue(assemblyPath, out var earlyAssembly);
 
             if (isEarlyLoaded)
             {
-                Utils.Logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
-                __result = earlyAssembly;
+                utils.Logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
+                return earlyAssembly!;
             }
 
-            return !isEarlyLoaded; // only continue if not early loaded
+            return null;
         }
 
-        //private static bool CreatePluginInstanceHook(Type type, ref IPlugin? __result)
-        //{
-        //    var assemblyPath = type.Assembly.Location;
-        //    var isEarlyLoaded = earlyLoadedAssemblies.TryGetValue(assemblyPath, out var earlyAssembly);
+        /// <summary>
+        /// Module initializer that makes sure harmony is loaded whenever the assembly is loaded so we don't get any type load errors.
+        /// </summary>
+        [ModuleInitializer]
+        internal static void ModuleInit()
+        {
+            // manually load harmony into main assembly load context
+            var entryAssembly = Assembly.GetEntryAssembly()!;
+            var myDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
+            var alc = AssemblyLoadContext.GetLoadContext(entryAssembly)!;
 
-        //    if (isEarlyLoaded)
-        //    {
-        //        _logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
-        //        __result = null;
-        //    }
+            Assembly harmonyAssembly = alc.LoadFromAssemblyPath(Path.Combine(myDir, "0Harmony.dll"));
+            harmonyAssembly.GetTypes();
+        }
 
-        //    return !isEarlyLoaded; // only continue if not early loaded
-        //    if (__instance is not PluginLoadContext instance) return true;
-
-        //    var isEarlyLoaded = earlyLoadedAssemblies.TryGetValue(assemblyPath, out var earlyAssembly);
-
-        //    if (isEarlyLoaded)
-        //    {
-        //        _logger.LogInformation("Returning early loaded assembly {assemblyPath}", assemblyPath);
-        //        __result = earlyAssembly;
-        //    }
-
-        //    return !isEarlyLoaded; // only continue if not early loaded
-        //}
+        /// <summary>
+        /// Method called as early as possible by the disk-patched DLL, or once by the trampoline before soft restarting. Our DLL will be loaded into the main assembly load context.
+        /// This method is NOT called again after a soft restart, so we are free to load any DLLs into the main assembly load context and blindly apply runtime patches.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Bootstrap()
+        {
+            // prevent stack overflow due to recursion through createlogger injection, and prevent double bootstrapping altogether
+            if (_bootstrapRan || _instance != null) return;
+            _bootstrapRan = true;
+            _instance = new JellyfinLoader();
+        }
     }
 }

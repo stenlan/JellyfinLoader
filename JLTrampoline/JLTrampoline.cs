@@ -37,7 +37,7 @@ namespace JLTrampoline
             // cleanup old file
             if (File.Exists(patchDllTargetPath + ".old")) File.Delete(patchDllTargetPath + ".old");
 
-            if (AssemblyLoadContext.GetLoadContext(entryAssembly).Assemblies.Any(assembly => assembly.Location == mainAssemblyPath))
+            if (AssemblyLoadContext.GetLoadContext(entryAssembly)!.Assemblies.Any(assembly => assembly.Location == mainAssemblyPath))
             {
                 // main dll already loaded, nothing to do
                 return;

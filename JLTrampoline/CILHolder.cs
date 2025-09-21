@@ -45,7 +45,7 @@ namespace JLTrampoline
                 try
                 {
                     var manifest = JsonSerializer.Deserialize<PluginManifest>(File.ReadAllBytes(metaPath), _jsonOptions);
-                    if (manifest.Id.ToString() != JLTrampoline.PluginId) continue;
+                    if (manifest?.Id.ToString() != JLTrampoline.PluginId) continue;
 
                     var version = Version.Parse(manifest.Version);
                     if (maxMetaPath == null || version > maxVersion)
@@ -62,7 +62,7 @@ namespace JLTrampoline
 
             if (maxMetaPath != null)
             {
-                AssemblyLoadContext.GetLoadContext(Assembly.GetEntryAssembly()).LoadFromAssemblyPath(Path.Combine(Path.GetDirectoryName(maxMetaPath), JLTrampoline.MainAssemblyName)).GetType(JLTrampoline.MainFullType).GetMethod("Bootstrap").Invoke(null, null);
+                AssemblyLoadContext.GetLoadContext(Assembly.GetEntryAssembly()!)!.LoadFromAssemblyPath(Path.Combine(Path.GetDirectoryName(maxMetaPath)!, JLTrampoline.MainAssemblyName)).GetType(JLTrampoline.MainFullType)!.GetMethod("Bootstrap")!.Invoke(null, null);
             }
         }
     }

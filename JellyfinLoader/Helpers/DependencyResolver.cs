@@ -1,15 +1,12 @@
-﻿using ICU4N.Impl;
-using JellyfinLoader.Models;
-using MediaBrowser.Common.Plugins;
+﻿using JellyfinLoader.Models;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Updates;
 using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
 using System.Text;
 
 namespace JellyfinLoader.Helpers
 {
-    internal class DependencyResolver
+    internal class DependencyResolver(Utils utils, PluginHelper pluginHelper)
     {
         // key is plugin Guid
         private Dictionary<Guid, List<InstalledPluginInfo>> _installedPlugins = [];
@@ -26,16 +23,9 @@ namespace JellyfinLoader.Helpers
         // mapping of plugin ID to dep pool ID
         private readonly Dictionary<Guid, int> _pluginToPoolMap = new();
 
-        private readonly string _pluginsDirectory;
-
-        public DependencyResolver(string pluginsDirectory)
-        {
-            _pluginsDirectory = pluginsDirectory;
-        }
-
         public async Task ResolveAll()
         {
-            var pluginDirs = Directory.EnumerateDirectories(_pluginsDirectory, "*.*", SearchOption.TopDirectoryOnly);
+            var pluginDirs = Directory.EnumerateDirectories(utils.PluginsPath, "*.*", SearchOption.TopDirectoryOnly);
 
             // TODO: more thoroughly handle disabled states, conflicting versions, missing meta.jsons, etc
 
@@ -44,10 +34,10 @@ namespace JellyfinLoader.Helpers
             // first, discover all installed plugins and dependencies
             foreach (var pluginDir in pluginDirs)
             {
-                var pluginManifest = PluginHelper.ReadPluginManifest(pluginDir);
+                var pluginManifest = pluginHelper.ReadPluginManifest(pluginDir);
                 if (pluginManifest == null)
                 {
-                    Utils.Logger.LogWarning("Plugin at {pluginDir} does not have a meta.json file. JellyfinLoader will not consider it as a dependency nor a dependent.", pluginDir);
+                    utils.Logger.LogWarning("Plugin at {pluginDir} does not have a meta.json file. JellyfinLoader will not consider it as a dependency nor a dependent.", pluginDir);
                     continue;
                 }
 
@@ -55,12 +45,12 @@ namespace JellyfinLoader.Helpers
 
                 if (!validVersion)
                 {
-                    _installedPlugins.GetOrAdd(pluginManifest.Id, []).Add(new InstalledPluginInfo(pluginManifest, null, Utils.MinimumVersion, pluginDir));
-                    Utils.Logger.LogWarning("Plugin at {pluginDir} has an invalid version in its meta.json: {ver}. JellyfinLoader will not consider it as a dependency nor a dependent.", pluginDir, pluginManifest.Version);
+                    _installedPlugins.GetOrAdd(pluginManifest.Id, []).Add(new InstalledPluginInfo(pluginManifest, null, utils.MinimumVersion, pluginDir));
+                    utils.Logger.LogWarning("Plugin at {pluginDir} has an invalid version in its meta.json: {ver}. JellyfinLoader will not consider it as a dependency nor a dependent.", pluginDir, pluginManifest.Version);
                     continue;
                 }
 
-                foreach (var dependencyInfo in AddInstalledPlugin(new InstalledPluginInfo(pluginManifest, PluginHelper.ReadLoaderManifest(pluginDir), pluginVersion!, pluginDir)))
+                foreach (var dependencyInfo in AddInstalledPlugin(new InstalledPluginInfo(pluginManifest, pluginHelper.ReadLoaderManifest(pluginDir), pluginVersion!, pluginDir)))
                 {
                     currentRoundDependencies.GetOrAdd(dependencyInfo.ID, []).Add(dependencyInfo);
                 }
@@ -74,7 +64,7 @@ namespace JellyfinLoader.Helpers
                 if (activeVersions.Count() > 1)
                 {
                     var maxVersion = activeVersions.MaxBy(v => v.Version)!;
-                    Utils.Logger.LogWarning("Found multiple enabled versions of plugin with ID {pluginID} and possible name {name} at paths:\n{paths}\nSuperceding all but the newest.", maxVersion.Manifest.Id, maxVersion.Manifest.Name, string.Join("\n", activeVersions));
+                    utils.Logger.LogWarning("Found multiple enabled versions of plugin with ID {pluginID} and possible name {name} at paths:\n{paths}\nSuperceding all but the newest.", maxVersion.Manifest.Id, maxVersion.Manifest.Name, string.Join("\n", activeVersions));
 
                     foreach (var version in activeVersions)
                     {
@@ -261,14 +251,14 @@ namespace JellyfinLoader.Helpers
         // TODO: multi-level dependency resolving, abi compatibility checks
         private async Task<InstalledPluginInfo> InstallDependency(DependencyInfo info)
         {
-            var packages = await PluginHelper.GetPackages(info.Manifest, false);
+            var packages = await pluginHelper.GetPackages(info.Manifest, false);
             var package = packages.FirstOrDefault(package => package.Id == info.ID)
                 ?? throw new DependencyResolverException($"Package with ID {info.ID} not found in repository at {info.Manifest}.");
 
             var version = package.Versions.FirstOrDefault(version => info.Versions.Contains(version.VersionNumber))
                 ?? throw new DependencyResolverException($"None of versions \"{string.Join(", ", info.Versions)}\" of package with ID {info.ID} were found in repository at {info.Manifest}.");
 
-            var installDir = await PluginHelper.PerformPackageInstallation(new InstallationInfo()
+            var installDir = await pluginHelper.PerformPackageInstallation(new InstallationInfo()
             {
                 Changelog = version.Changelog,
                 Id = package.Id,
@@ -279,7 +269,7 @@ namespace JellyfinLoader.Helpers
                 PackageInfo = package
             }, PluginStatus.Active);
 
-            var pluginManifest = PluginHelper.ReadPluginManifest(installDir) ?? throw new InvalidOperationException($"Failed to read plugin manifest for plugin {package.Name} immediately after installing.");
+            var pluginManifest = pluginHelper.ReadPluginManifest(installDir) ?? throw new InvalidOperationException($"Failed to read plugin manifest for plugin {package.Name} immediately after installing.");
 
             if (pluginManifest.Status != PluginStatus.Active)
             {
@@ -287,7 +277,7 @@ namespace JellyfinLoader.Helpers
             }
 
             // read pluginManifest from file again, since it might have superceded another and gotten the "Restart" memory-only status
-            return new InstalledPluginInfo(pluginManifest, PluginHelper.ReadLoaderManifest(installDir), version.VersionNumber, installDir);
+            return new InstalledPluginInfo(pluginManifest, pluginHelper.ReadLoaderManifest(installDir), version.VersionNumber, installDir);
         }
 
         private IEnumerable<InternalDependencyInfo> AddInstalledPlugin(InstalledPluginInfo info)
@@ -314,7 +304,7 @@ namespace JellyfinLoader.Helpers
             }
         }
 
-        private static void ChangePluginState(InstalledPluginInfo plugin, PluginStatus state)
+        private void ChangePluginState(InstalledPluginInfo plugin, PluginStatus state)
         {
             ArgumentException.ThrowIfNullOrEmpty(plugin.Path);
 
@@ -325,7 +315,7 @@ namespace JellyfinLoader.Helpers
             }
 
             plugin.Manifest.Status = state;
-            PluginHelper.SavePluginManifest(plugin.Manifest, plugin.Path);
+            pluginHelper.SavePluginManifest(plugin.Manifest, plugin.Path);
         }
     }
 }

@@ -13,13 +13,13 @@ using System.Text.Json;
 
 namespace JellyfinLoader.Helpers
 {
-    internal class PluginHelper
+    internal class PluginHelper(Utils utils)
     {
         private const string _pluginMetaFileName = "meta.json";
         private const string _loaderMetaFileName = "loader.json";
 
         // PluginManager#TryGetPluginDlls
-        public static IReadOnlyList<string> GetLoaderPluginDLLs(LocalPlugin plugin, LoaderPluginManifest loaderManifest)
+        public IReadOnlyList<string> GetLoaderPluginDLLs(LocalPlugin plugin, LoaderPluginManifest loaderManifest)
         {
             ArgumentNullException.ThrowIfNull(nameof(plugin));
 
@@ -62,12 +62,12 @@ namespace JellyfinLoader.Helpers
             }
         }
 
-        public static bool SaveManifests(string path, PluginManifest pluginManifest, LoaderPluginManifest loaderManifest)
+        public bool SaveManifests(string path, PluginManifest pluginManifest, LoaderPluginManifest loaderManifest)
         {
             try
             {
-                File.WriteAllText(Path.Combine(path, _loaderMetaFileName), JsonSerializer.Serialize(loaderManifest, Utils.JsonOptions));
-                File.WriteAllText(Path.Combine(path, _pluginMetaFileName), JsonSerializer.Serialize(pluginManifest, Utils.JsonOptions));
+                File.WriteAllText(Path.Combine(path, _loaderMetaFileName), JsonSerializer.Serialize(loaderManifest, utils.JsonOptions));
+                File.WriteAllText(Path.Combine(path, _pluginMetaFileName), JsonSerializer.Serialize(pluginManifest, utils.JsonOptions));
                 return true;
             }
             catch (ArgumentException e)
@@ -76,11 +76,11 @@ namespace JellyfinLoader.Helpers
             }
         }
 
-        public static bool SavePluginManifest(PluginManifest manifest, string path)
+        public bool SavePluginManifest(PluginManifest manifest, string path)
         {
             try
             {
-                var data = JsonSerializer.Serialize(manifest, Utils.JsonOptions);
+                var data = JsonSerializer.Serialize(manifest, utils.JsonOptions);
                 File.WriteAllText(Path.Combine(path, _pluginMetaFileName), data);
                 return true;
             }
@@ -90,7 +90,7 @@ namespace JellyfinLoader.Helpers
             }
         }
 
-        public static PluginManifest? ReadPluginManifest(string dir)
+        public PluginManifest? ReadPluginManifest(string dir)
         {
             var metaFile = Path.Combine(dir, _pluginMetaFileName);
             if (!File.Exists(metaFile)) return null;
@@ -98,18 +98,18 @@ namespace JellyfinLoader.Helpers
             try
             {
                 byte[] data = File.ReadAllBytes(metaFile);
-                var manifest = JsonSerializer.Deserialize<PluginManifest>(data, Utils.JsonOptions);
+                var manifest = JsonSerializer.Deserialize<PluginManifest>(data, utils.JsonOptions);
 
                 return manifest;
             }
             catch
             {
-                Utils.Logger.LogError("Error reading plugin manifest at {metaFile}.", metaFile);
+                utils.Logger.LogError("Error reading plugin manifest at {metaFile}.", metaFile);
                 return null;
             }
         }
 
-        public static LoaderPluginManifest? ReadLoaderManifest(string dir)
+        public LoaderPluginManifest? ReadLoaderManifest(string dir)
         {
             var metaFile = Path.Combine(dir, _loaderMetaFileName);
             if (!File.Exists(metaFile)) return null;
@@ -117,22 +117,22 @@ namespace JellyfinLoader.Helpers
             try
             {
                 byte[] data = File.ReadAllBytes(metaFile);
-                var manifest = JsonSerializer.Deserialize<LoaderPluginManifest>(data, Utils.JsonOptions);
+                var manifest = JsonSerializer.Deserialize<LoaderPluginManifest>(data, utils.JsonOptions);
 
                 return manifest;
             }
             catch
             {
-                Utils.Logger.LogError("Error reading loader manifest at {metaFile}.", metaFile);
+                utils.Logger.LogError("Error reading loader manifest at {metaFile}.", metaFile);
                 return null;
             }
         }
 
-        public static bool SaveLoaderManifest(LoaderPluginManifest manifest, string path)
+        public bool SaveLoaderManifest(LoaderPluginManifest manifest, string path)
         {
             try
             {
-                var data = JsonSerializer.Serialize(manifest, Utils.JsonOptions);
+                var data = JsonSerializer.Serialize(manifest, utils.JsonOptions);
                 File.WriteAllText(Path.Combine(path, _loaderMetaFileName), data);
                 return true;
             }
@@ -143,12 +143,12 @@ namespace JellyfinLoader.Helpers
         }
 
         // InstallationManager#GetPackages
-        public static async Task<PackageInfo[]> GetPackages(string manifestUrl, bool filterIncompatible, CancellationToken cancellationToken = default)
+        public async Task<PackageInfo[]> GetPackages(string manifestUrl, bool filterIncompatible, CancellationToken cancellationToken = default)
         {
             try
             {
-                PackageInfo[]? packages = await Utils.HttpClient
-                        .GetFromJsonAsync<PackageInfo[]>(new Uri(manifestUrl), Utils.JsonOptions, cancellationToken).ConfigureAwait(false);
+                PackageInfo[]? packages = await utils.HttpClient
+                        .GetFromJsonAsync<PackageInfo[]>(new Uri(manifestUrl), utils.JsonOptions, cancellationToken).ConfigureAwait(false);
 
                 if (packages is null)
                 {
@@ -171,11 +171,11 @@ namespace JellyfinLoader.Helpers
 
                         if (!Version.TryParse(ver.TargetAbi, out var targetAbi))
                         {
-                            targetAbi = Utils.MinimumVersion;
+                            targetAbi = utils.MinimumVersion;
                         }
 
                         // Only show plugins that are greater than or equal to targetAbi.
-                        if (Utils.AppVersion >= targetAbi)
+                        if (utils.AppVersion >= targetAbi)
                         {
                             continue;
                         }
@@ -189,28 +189,28 @@ namespace JellyfinLoader.Helpers
             }
             catch (IOException ex)
             {
-                Utils.Logger.LogError(ex, "Cannot locate the plugin manifest {Manifest}", manifestUrl);
+                utils.Logger.LogError(ex, "Cannot locate the plugin manifest {Manifest}", manifestUrl);
                 return Array.Empty<PackageInfo>();
             }
             catch (JsonException ex)
             {
-                Utils.Logger.LogError(ex, "Failed to deserialize the plugin manifest retrieved from {Manifest}", manifestUrl);
+                utils.Logger.LogError(ex, "Failed to deserialize the plugin manifest retrieved from {Manifest}", manifestUrl);
                 return Array.Empty<PackageInfo>();
             }
             catch (UriFormatException ex)
             {
-                Utils.Logger.LogError(ex, "The URL configured for the plugin repository manifest URL is not valid: {Manifest}", manifestUrl);
+                utils.Logger.LogError(ex, "The URL configured for the plugin repository manifest URL is not valid: {Manifest}", manifestUrl);
                 return Array.Empty<PackageInfo>();
             }
             catch (HttpRequestException ex)
             {
-                Utils.Logger.LogError(ex, "An error occurred while accessing the plugin manifest: {Manifest}", manifestUrl);
+                utils.Logger.LogError(ex, "An error occurred while accessing the plugin manifest: {Manifest}", manifestUrl);
                 return Array.Empty<PackageInfo>();
             }
         }
 
         // PluginManager#LoadManifest
-        internal static LocalPlugin ReadLocalPlugin(string dir)
+        internal LocalPlugin ReadLocalPlugin(string dir)
         {
             Version? version;
             PluginManifest? manifest = null;
@@ -222,30 +222,30 @@ namespace JellyfinLoader.Helpers
                 try
                 {
                     data = File.ReadAllBytes(metafile);
-                    manifest = JsonSerializer.Deserialize<PluginManifest>(data, Utils.JsonOptions);
+                    manifest = JsonSerializer.Deserialize<PluginManifest>(data, utils.JsonOptions);
                 }
                 catch (IOException ex)
                 {
-                    Utils.Logger.LogError(ex, "Error reading file {Path}.", dir);
+                    utils.Logger.LogError(ex, "Error reading file {Path}.", dir);
                 }
                 catch (JsonException ex)
                 {
-                    Utils.Logger.LogError(ex, "Error deserializing {Json}.", Encoding.UTF8.GetString(data));
+                    utils.Logger.LogError(ex, "Error deserializing {Json}.", Encoding.UTF8.GetString(data));
                 }
 
                 if (manifest is not null)
                 {
                     if (!Version.TryParse(manifest.TargetAbi, out var targetAbi))
                     {
-                        targetAbi = Utils.MinimumVersion;
+                        targetAbi = utils.MinimumVersion;
                     }
 
                     if (!Version.TryParse(manifest.Version, out version))
                     {
-                        manifest.Version = Utils.MinimumVersion.ToString();
+                        manifest.Version = utils.MinimumVersion.ToString();
                     }
 
-                    return new LocalPlugin(dir, Utils.AppVersion >= targetAbi, manifest);
+                    return new LocalPlugin(dir, utils.AppVersion >= targetAbi, manifest);
                 }
             }
 
@@ -257,12 +257,12 @@ namespace JellyfinLoader.Helpers
             {
                 // Get the version number from the filename if possible.
                 metafile = Path.GetFileName(dir[..versionIndex]);
-                version = Version.TryParse(dir.AsSpan()[(versionIndex + 1)..], out Version? parsedVersion) ? parsedVersion : Utils.AppVersion;
+                version = Version.TryParse(dir.AsSpan()[(versionIndex + 1)..], out Version? parsedVersion) ? parsedVersion : utils.AppVersion;
             }
             else
             {
                 // Un-versioned folder - Add it under the path name and version it suitable for this instance.
-                version = Utils.AppVersion;
+                version = utils.AppVersion;
             }
 
             // Auto-create a plugin manifest, so we can disable it, if it fails to load.
@@ -272,7 +272,7 @@ namespace JellyfinLoader.Helpers
                 Name = metafile,
                 AutoUpdate = false,
                 Id = metafile.GetMD5(),
-                TargetAbi = Utils.AppVersion.ToString(),
+                TargetAbi = utils.AppVersion.ToString(),
                 Version = version.ToString()
             };
 
@@ -280,18 +280,18 @@ namespace JellyfinLoader.Helpers
         }
 
         // InstallationManager#PerformPackageInstallation
-        public static async Task<string> PerformPackageInstallation(InstallationInfo package, PluginStatus status)
+        public async Task<string> PerformPackageInstallation(InstallationInfo package, PluginStatus status)
         {
             if (!Path.GetExtension(package.SourceUrl.AsSpan()).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             {
-                Utils.Logger.LogError("Only zip packages are supported. {SourceUrl} is not a zip archive.", package.SourceUrl);
+                utils.Logger.LogError("Only zip packages are supported. {SourceUrl} is not a zip archive.", package.SourceUrl);
                 throw new InvalidDataException("Non-zip package encountered.");
             }
 
             // Always override the passed-in target (which is a file) and figure it out again
-            string targetDir = Path.Combine(Utils.PluginsPath, package.Name);
+            string targetDir = Path.Combine(utils.PluginsPath, package.Name);
 
-            using var response = await Utils.HttpClient
+            using var response = await utils.HttpClient
                 .GetAsync(new Uri(package.SourceUrl)).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -299,7 +299,7 @@ namespace JellyfinLoader.Helpers
             var hash = Convert.ToHexString(await MD5.HashDataAsync(stream).ConfigureAwait(false));
             if (!string.Equals(package.Checksum, hash, StringComparison.OrdinalIgnoreCase))
             {
-                Utils.Logger.LogError(
+                utils.Logger.LogError(
                     "The checksums didn't match while installing {Package}, expected: {Expected}, got: {Received}",
                     package.Name,
                     package.Checksum,
@@ -328,9 +328,9 @@ namespace JellyfinLoader.Helpers
             ZipFile.ExtractToDirectory(stream, targetDir, true);
 
             // Ensure we create one or populate existing ones with missing data.
-            await Utils.PluginManager.PopulateManifest(package.PackageInfo, package.Version, targetDir, status).ConfigureAwait(false);
+            await utils.PluginManager.PopulateManifest(package.PackageInfo, package.Version, targetDir, status).ConfigureAwait(false);
 
-            Utils.PluginManager.ImportPluginFrom(targetDir);
+            utils.PluginManager.ImportPluginFrom(targetDir);
 
             return targetDir;
         }

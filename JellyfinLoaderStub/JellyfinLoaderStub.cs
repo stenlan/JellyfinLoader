@@ -64,9 +64,11 @@ namespace JellyfinLoaderStub
 
         private async Task InstallJellyfinLoader(IServerApplicationHost applicationHost, ISystemManager systemManager, IInstallationManager installationManager, RepositoryInfo repositoryInfo, ILogger<JellyfinLoaderStub> logger)
         {
+            ArgumentNullException.ThrowIfNull(repositoryInfo.Name);
+            ArgumentNullException.ThrowIfNull(repositoryInfo.Url);
             logger.LogInformation("JellyfinLoader not installed, installing...");
             var jellyfinLoaderPackage = (await installationManager.GetPackages(repositoryInfo.Name, repositoryInfo.Url, true)).First(package => package.Id == JellyfinLoaderGuid);
-            var latestCompatibleVersion = jellyfinLoaderPackage.Versions.Where(version => Version.Parse(version.TargetAbi) == applicationHost.ApplicationVersion).MaxBy(versionInfo => versionInfo.VersionNumber);
+            var latestCompatibleVersion = jellyfinLoaderPackage.Versions.Where(version => Version.Parse(version.TargetAbi!) == applicationHost.ApplicationVersion).MaxBy(versionInfo => versionInfo.VersionNumber);
 
             if (latestCompatibleVersion == null)
             {
