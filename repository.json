@@ -8,6 +8,14 @@
     "overview": "",
     "versions": [
       {
+        "checksum": "010798d27e1fe10429709c0ac3c35f6e",
+        "changelog": "",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/stenlan/JellyfinLoader/releases/download/v0.1.0/JellyfinLoader-0.1.0.zip",
+        "timestamp": "2025-09-22T17:00:00.0000000Z",
+        "version": "0.1.0.0"
+      },
+      {
         "checksum": "c243a0647f7a0c75eb956895426e5b5a",
         "changelog": "",
         "targetAbi": "10.10.7.0",
