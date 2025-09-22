@@ -11,6 +11,8 @@ namespace JellyfinLoader.Hooks
     {
         static bool Prefix(AssemblyLoadContext __instance, string assemblyPath, ref Assembly __result)
         {
+            if (__instance is not PluginLoadContext) return true;
+
             return JellyfinLoader.Instance.assemblyLoader.LoadFromAssemblyPath(assemblyPath, ref __result);
         }
     }

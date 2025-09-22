@@ -1,7 +1,8 @@
-﻿using System.Reflection;
+﻿using JellyfinLoader.AssemblyLoading;
+using System.Reflection;
 using System.Runtime.Loader;
 
-namespace JellyfinLoader.Helpers
+namespace JellyfinLoader.Models
 {
     internal class JLAssemblyData(AssemblyLoadContext alc, int? depPoolID)
     {
@@ -10,7 +11,5 @@ namespace JellyfinLoader.Helpers
         public AssemblyLoadContext AssemblyLoadContext { get; init; } = alc;
 
         public int? DepPoolId { get; init; } = depPoolID;
-
-        public bool LoadAllowed { get; set; }
     }
 }

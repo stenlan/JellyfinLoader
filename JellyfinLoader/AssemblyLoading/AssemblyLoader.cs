@@ -1,18 +1,13 @@
 ﻿using Emby.Server.Implementations.Plugins;
+using JellyfinLoader.Helpers;
 using JellyfinLoader.Models;
 using MediaBrowser.Common.Plugins;
-using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace JellyfinLoader.Helpers
+namespace JellyfinLoader.AssemblyLoading
 {
     internal class AssemblyLoader(Utils utils, PluginIOHelper pluginIOHelper, DependencyResolver resolver)
     {
@@ -38,7 +33,7 @@ namespace JellyfinLoader.Helpers
             foreach (var (depPoolID, depPool) in resolver.dependencyPools)
             {
                 // create a pluginLoadContext for every dependency pool
-                var loadContext = new PluginLoadContext(string.Empty);
+                var loadContext = new JLLoadContext();
                 var mainLoadContextAllowed = true;
                 var earlyLoadAllowed = true;
                 var canLoad = true;
@@ -53,6 +48,7 @@ namespace JellyfinLoader.Helpers
                     {
                         ConfigureAssemblies(plugin.Path, plugin.Manifest, loadContext, depPoolID);
                         earlyLoadAllowed = false;
+                        mainLoadContextAllowed = false;
                         continue;
                     }
 
@@ -60,12 +56,14 @@ namespace JellyfinLoader.Helpers
                     if (plugin.Manifest.Assemblies.Count != 1)
                     {
                         ConfigureAssemblies(plugin.Path, plugin.Manifest, loadContext, depPoolID);
-                        utils.Logger.LogWarning("Despite containing a loader.json file, the plugin at {pluginPath} will not be treated as a JellyfinLoader plugin because its meta.json contains more than 1 DLL in its \"assemblies\" entry. It should contain just the JellyfinLoaderStub assembly, its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).", plugin.Path);
+                        utils.Logger.LogWarning("Despite containing a loader.json file, the plugin at {pluginPath} will not be treated as a JellyfinLoader plugin because its meta.json does not contain exactly 1 DLL in its \"assemblies\" entry. It should contain just the JellyfinLoaderStub assembly, its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).", plugin.Path);
                         earlyLoadAllowed = false;
+                        mainLoadContextAllowed = false;
                         continue;
                     }
 
                     var wantsEarlyLoad = plugin.LoaderManifest.LoadTiming == "Early";
+
                     if (wantsEarlyLoad && !earlyLoadAllowed)
                     {
                         utils.Logger.LogWarning("Despite specifying a loadTiming of \"Early\" in its loader.json file, the plugin at {pluginPath} will not be early loaded, because it depends on at least 1 non-early loading plugin.", plugin.Path);
@@ -84,6 +82,7 @@ namespace JellyfinLoader.Helpers
                     mainLoadContextAllowed &= mainLoadContext;
 
                     ConfigureAssemblies(plugin.Path, plugin.Manifest, plugin.LoaderManifest, mainLoadContext ? mainALC : loadContext, mainLoadContext ? null : depPoolID);
+                    pluginIOHelper.SaveLoaderManifest(plugin.LoaderManifest, plugin.Path);
 
                     if (!(wantsEarlyLoad && earlyLoadAllowed)) continue;
 
@@ -97,7 +96,11 @@ namespace JellyfinLoader.Helpers
 
                     var loadSuccess = EarlyLoadPlugin(plugin.Path, plugin.Manifest, plugin.LoaderManifest, out var elPluginInstances);
 
-                    if (loadSuccess) continue;
+                    if (loadSuccess)
+                    {
+                        earlyLoadPluginInstances.AddRange(elPluginInstances);
+                        continue;
+                    }
 
                     canLoad = false;
                     resolver.ChangePluginState(plugin, PluginStatus.Malfunctioned);
@@ -131,7 +134,7 @@ namespace JellyfinLoader.Helpers
         /// <summary>
         /// Configure assemblies for JellyfinLoader-unaware plugin
         /// </summary>
-        private void ConfigureAssemblies(string pluginPath, PluginManifest pluginManifest, AssemblyLoadContext loadContext, int depPoolID)
+        private void ConfigureAssemblies(string pluginPath, PluginManifest pluginManifest, JLLoadContext loadContext, int depPoolID)
         {
             var dllFilePaths = pluginIOHelper.GetPluginDLLs(pluginPath, pluginManifest);
             foreach (var dllPath in dllFilePaths) {
@@ -206,7 +209,6 @@ namespace JellyfinLoader.Helpers
                 earlyLoadPluginInstances.Add(Activator.CreateInstance(earlyLoadPluginHandlerType)!);
             }
 
-            pluginIOHelper.SaveLoaderManifest(loaderManifest, pluginPath);
             return true;
         }
 
@@ -216,7 +218,7 @@ namespace JellyfinLoader.Helpers
         internal bool LoadFromAssemblyPath(string assemblyPath, ref Assembly result)
         {
             var isJLManaged = jlManagedAssemblies.TryGetValue(assemblyPath, out var assemblyData);
-            if (!isJLManaged || assemblyData == null || assemblyData.LoadAllowed == true) return true;
+            if (!isJLManaged || assemblyData == null) return true;
 
             // managed and already loaded
             if (assemblyData.Assembly is not null)
@@ -226,10 +228,8 @@ namespace JellyfinLoader.Helpers
                 return false;
             }
 
-            // managed, but not yet loaded.
-            assemblyData.LoadAllowed = true;
+            // managed, but not yet loaded. will not recurse because this hook is only called on PluginLoadContext
             result = assemblyData.AssemblyLoadContext.LoadFromAssemblyPath(assemblyPath);
-            assemblyData.LoadAllowed = false;
 
             return false;
         }

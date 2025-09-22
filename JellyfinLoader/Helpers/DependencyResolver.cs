@@ -42,6 +42,8 @@ namespace JellyfinLoader.Helpers
             // first, discover all installed plugins and dependencies
             foreach (var pluginDir in pluginDirs)
             {
+                if (pluginDir == utils.PluginConfigurationsPath) continue;
+
                 var pluginManifest = pluginIOHelper.ReadPluginManifest(pluginDir);
                 if (pluginManifest == null)
                 {
@@ -291,6 +293,8 @@ namespace JellyfinLoader.Helpers
 
             var version = package.Versions.FirstOrDefault(version => info.Versions.Contains(version.VersionNumber))
                 ?? throw new DependencyResolverException($"None of versions \"{string.Join(", ", info.Versions)}\" of package with ID {info.ID} were found in repository at {info.Manifest}.");
+
+            utils.Logger.LogInformation("Downloading and installing dependency with ID {pluginID} version {version} from repository {repoName}...", info.ID, version.VersionNumber, info.Manifest);
 
             var installDir = await pluginIOHelper.PerformPackageInstallation(new InstallationInfo()
             {

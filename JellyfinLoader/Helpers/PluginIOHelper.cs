@@ -1,4 +1,5 @@
 ﻿using Emby.Server.Implementations.Library;
+using JellyfinLoader.AssemblyLoading;
 using JellyfinLoader.Models;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Plugins;
@@ -20,7 +21,7 @@ namespace JellyfinLoader.Helpers
         private const string _loaderMetaFileName = "loader.json";
 
         // PluginManager#TryGetPluginDlls
-        public (string stubPath, IEnumerable<string> dllPaths) GetJLAwarePluginDLLs(string pluginPath, PluginManifest pluginManifest, LoaderPluginManifest loaderManifest)
+        public (string stubPath, IEnumerable<string> dllPaths) GetJLAwarePluginDLLs(string pluginPath, PluginManifest pluginManifest, LoaderPluginManifest loaderManifest, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(nameof(pluginManifest));
             ArgumentNullException.ThrowIfNull(nameof(loaderManifest));
@@ -31,7 +32,7 @@ namespace JellyfinLoader.Helpers
             // should never happen and it safeguarded against in JellyfinLoader.cs, but just to be sure.
             if (pluginManifest.Assemblies.Count != 1)
             {
-                throw new InvalidOperationException($"Error while discovering DLLs for the plugin at {pluginPath}: Its meta.json contains more than 1 DLL in its \"assemblies\" entry. It should contain just the JellyfinLoaderStub assembly, its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).");
+                throw new InvalidOperationException($"Error while discovering DLLs for the plugin at {pluginPath}: Its meta.json does not contain exactly 1 DLL in its \"assemblies\" entry. It should contain just the JellyfinLoaderStub assembly, its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).");
             }
 
             var stubEntry = pluginManifest.Assemblies.First();
@@ -40,7 +41,7 @@ namespace JellyfinLoader.Helpers
             // use loaderManifest.Assemblies instead of pluginManifest.Assemblies
             if (pluginDlls.Length > 0 && loaderManifest.Assemblies.Count > 0)
             {
-                // _logger.LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", plugin.Name);
+                (logger ?? utils.Logger).LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", pluginManifest.Name);
 
                 var canonicalizedPaths = new List<string>();
                 foreach (var path in loaderManifest.Assemblies)
@@ -76,7 +77,7 @@ namespace JellyfinLoader.Helpers
         }
 
         // PluginManager#TryGetPluginDlls
-        public IReadOnlyList<string> GetPluginDLLs(string pluginPath, PluginManifest pluginManifest)
+        public IReadOnlyList<string> GetPluginDLLs(string pluginPath, PluginManifest pluginManifest, ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(nameof(pluginManifest));
             ArgumentNullException.ThrowIfNull(nameof(pluginPath));
@@ -85,7 +86,7 @@ namespace JellyfinLoader.Helpers
 
             if (pluginDlls.Length > 0 && pluginManifest.Assemblies.Count > 0)
             {
-                // _logger.LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", plugin.Name);
+                (logger ?? utils.Logger).LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", pluginManifest.Name);
 
                 var canonicalizedPaths = new List<string>();
                 foreach (var path in pluginManifest.Assemblies)
@@ -114,6 +115,36 @@ namespace JellyfinLoader.Helpers
             {
                 // No whitelist, default to loading all DLLs in plugin directory.
                 return pluginDlls;
+            }
+        }
+
+        /// <summary>
+        /// Helper function for the PluginManager#TryGetPluginDLLs hook
+        /// </summary>
+        internal bool TryGetPluginDLLs(LocalPlugin plugin, ref IReadOnlyList<string> whitelistedDlls, ILogger logger)
+        {
+            var pluginPath = plugin.Path;
+            var loaderManifest = ReadLoaderManifest(pluginPath);
+            try
+            {
+                if (loaderManifest != null && plugin.Manifest.Assemblies.Count != 1)
+                {
+                    utils.Logger.LogWarning("Despite containing a loader.json file, the plugin at {pluginPath} will not be treated as a JellyfinLoader plugin because its meta.json does not contain exactly 1 DLL in its \"assemblies\" entry. It should contain just the JellyfinLoaderStub assembly, its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).", plugin.Path);
+                    loaderManifest = null;
+                }
+
+                if (loaderManifest == null)
+                {
+                    whitelistedDlls = GetPluginDLLs(pluginPath, plugin.Manifest, logger);
+                } else
+                {
+                    var (stubPath, dlls) = GetJLAwarePluginDLLs(pluginPath, plugin.Manifest, loaderManifest, logger);
+                    whitelistedDlls = [..dlls];
+                }
+                return true;
+            } catch
+            {
+                return false;
             }
         }
 

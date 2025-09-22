@@ -40,17 +40,18 @@ namespace JellyfinLoader.Helpers
         internal ILogger Logger;
         internal PluginManager PluginManager;
         internal string PluginsPath;
+        internal string PluginConfigurationsPath;
 
         internal Utils()
         {
             var loggerFactory = ((SerilogLoggerFactory)typeof(Program).GetField("_loggerFactory", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!);
             Logger = loggerFactory.CreateLogger("JellyfinLoader");
-            Logger.LogInformation("In bootstrap.");
 
             var applicationPaths = StartupHelpers.CreateApplicationPaths(Parser.Default.ParseArguments<StartupOptions>(Environment.GetCommandLineArgs()).Value);
             PluginsPath = applicationPaths.PluginsPath;
+            PluginConfigurationsPath = applicationPaths.PluginConfigurationsPath;
 
-            var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), null!, (ServerConfiguration)ConfigurationHelper.GetXmlConfiguration(typeof(ServerConfiguration), applicationPaths.SystemConfigurationFilePath, new MyXmlSerializer()), PluginsPath, AppVersion);
+            var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), null!, (ServerConfiguration)ConfigurationHelper.GetXmlConfiguration(typeof(ServerConfiguration), applicationPaths.SystemConfigurationFilePath, new MyXmlSerializer()), "NON_EXISTENT_DIRECTORY_d524071f-b95c-452d-825e-c772f68b5957", AppVersion);
             typeof(PluginManager).GetField("_httpClientFactory", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(pluginManager, this);
 
             PluginManager = pluginManager;

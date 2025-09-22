@@ -1,10 +1,7 @@
-﻿using Emby.Server.Implementations.Plugins;
-using HarmonyLib;
+﻿using HarmonyLib;
+using JellyfinLoader.AssemblyLoading;
 using JellyfinLoader.Helpers;
 using JellyfinLoader.Hooks;
-using JellyfinLoader.Models;
-using MediaBrowser.Common.Plugins;
-using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -20,14 +17,10 @@ namespace JellyfinLoader
         
         private bool _coldStart = true;
 
-        // dependency pool ID => assemblyLoadContext mapping
-
-        // private readonly List<object> earlyLoadPluginInstances = [];
-
         private readonly Utils utils;
         private readonly Harmony harmony;
-        private readonly PluginIOHelper pluginIOHelper;
         private readonly DependencyResolver resolver;
+        internal readonly PluginIOHelper pluginIOHelper;
         internal readonly AssemblyLoader assemblyLoader;
 
         private JellyfinLoader()
@@ -56,6 +49,7 @@ namespace JellyfinLoader
             if (_coldStart)
             {
                 harmony.PatchCategory(Assembly.GetExecutingAssembly(), nameof(LoadFromAssemblyPathHook));
+                harmony.PatchCategory(Assembly.GetExecutingAssembly(), nameof(TryGetPluginDLLsHook));
             }
 
             utils.Logger.LogInformation("Resolving dependencies...");
