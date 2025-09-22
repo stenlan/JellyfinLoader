@@ -34,8 +34,20 @@ namespace JLTrampoline
             var rootDir = Path.GetDirectoryName(entryAssembly.Location)!;
             var patchDllTargetPath = Path.Combine(rootDir, "Serilog.Extensions.Logging.dll");
 
-            // cleanup old file
-            if (File.Exists(patchDllTargetPath + ".old")) File.Delete(patchDllTargetPath + ".old");
+            // cleanup old files
+            string oldFileName;
+            for (int i = 0; File.Exists(oldFileName = $"{patchDllTargetPath}.{i}.old"); i++)
+            {
+                try
+                {
+                    File.Delete(oldFileName);
+                }
+                catch
+                {
+                    // will work on next cold start
+                    break;
+                }
+            }
 
             if (AssemblyLoadContext.GetLoadContext(entryAssembly)!.Assemblies.Any(assembly => assembly.Location == mainAssemblyPath))
             {
@@ -123,7 +135,9 @@ namespace JLTrampoline
             if (backupExists)
             {
                 // don't touch existing backup
-                File.Move(patchDllTargetPath, patchDllTargetPath + ".old");
+                string oldFileName;
+                for (int i = 0; File.Exists(oldFileName = $"{patchDllTargetPath}.{i}.old"); i++);
+                File.Move(patchDllTargetPath, oldFileName);
             }
             else
             {
