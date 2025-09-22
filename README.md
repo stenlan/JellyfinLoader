@@ -13,7 +13,7 @@ Some plugins want to do things that aren't easily done by a normal Jellyfin plug
 // TODO. In short, it patches a DLL on disk that loads a different DLL very early in the Jellyfin startup process, then performs the necessary instrumentation.
 
 ## How do I use this?
-**If you are a Jellyfin user** and you are trying to install a plugin that depends on JellyfinLoader, you won't need to do anything. JellyfinLoad should automatically take care of installing and updating itself. The repository URL is [https://raw.githubusercontent.com/stenlan/JellyfinLoader/refs/heads/main/repository.json](https://raw.githubusercontent.com/stenlan/JellyfinLoader/refs/heads/main/repository.json).
+**If you are a Jellyfin user** and you are trying to install a plugin that depends on JellyfinLoader, you won't need to do anything. JellyfinLoader should automatically take care of installing and updating itself.
 
 **If you are a Jellyfin plugin developer**, read along.
 
