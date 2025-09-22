@@ -39,11 +39,29 @@ namespace JellyfinLoaderStub
             // if a compatible jellyfinLoader is already installed, we're done here.
             // even if it has been disabled, deleted, needs a restart, etc, because we don't want to strongarm users trying to
             // remove or disable jellyfinLoader
-            if (plugins.Any(plugin => 
-                plugin.Id == JellyfinLoaderGuid &&
-                plugin.Manifest.Status != PluginStatus.Superceded &&
-                plugin.Manifest.Status != PluginStatus.NotSupported)
-            ) return;
+            var jlPlugins = plugins.Where(plugin => plugin.Id == JellyfinLoaderGuid);
+
+            // A version of JL is installed
+            if (jlPlugins.Any())
+            {
+                // A version of JL is installed, but none are active for some reason. Its state can be either:
+                // - Restart, but this is a pretty much impossible state for the stub to end up encountering.
+                // - Disabled, in which case this was an explicit action by the user and we don't want to override them.
+                // - Not supported, in which case updating should be handled through JL's update mechanism.
+                // - Malfunctioned, in which case something else is wrong, but it's not the stub's responsibility.
+                // - Superceded, in which case a newer instance of JL probably exists but if not, it is in one of the states above or simply deleted.
+                // - Deleted, either as the plugin status or actually deleted from disk.
+
+                if (!jlPlugins.Any(plugin => plugin.Manifest.Status == PluginStatus.Active))
+                {
+                    foreach (var jlPlugin in jlPlugins)
+                    {
+                        logger.LogWarning("An instance of JellyfinLoader was found at {pluginPath}, but its status is \"{pluginStatus}\". JellyfinLoader plugins will not load.", jlPlugin.Path, jlPlugin.Manifest.Status);
+                    }
+                }
+
+                return;
+            }
 
             var jellyfinLoaderRepo = serverConfigurationManager.Configuration.PluginRepositories.FirstOrDefault(repo => repo.Url == RepositoryURL);
 

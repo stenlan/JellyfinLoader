@@ -5,6 +5,7 @@ using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Updates;
 using Microsoft.Extensions.Logging;
+using System.IO;
 using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -13,32 +14,86 @@ using System.Text.Json;
 
 namespace JellyfinLoader.Helpers
 {
-    internal class PluginHelper(Utils utils)
+    internal class PluginIOHelper(Utils utils)
     {
         private const string _pluginMetaFileName = "meta.json";
         private const string _loaderMetaFileName = "loader.json";
 
         // PluginManager#TryGetPluginDlls
-        public IReadOnlyList<string> GetLoaderPluginDLLs(LocalPlugin plugin, LoaderPluginManifest loaderManifest)
+        public (string stubPath, IEnumerable<string> dllPaths) GetJLAwarePluginDLLs(string pluginPath, PluginManifest pluginManifest, LoaderPluginManifest loaderManifest)
         {
-            ArgumentNullException.ThrowIfNull(nameof(plugin));
+            ArgumentNullException.ThrowIfNull(nameof(pluginManifest));
+            ArgumentNullException.ThrowIfNull(nameof(loaderManifest));
+            ArgumentNullException.ThrowIfNull(nameof(pluginPath));
 
-            var pluginDlls = Directory.GetFiles(plugin.Path, "*.dll", SearchOption.AllDirectories);
-            var manifestAssemblies = new List<string>(plugin.Manifest.Assemblies);
-            manifestAssemblies.AddRange(loaderManifest.Assemblies);
+            var pluginDlls = Directory.GetFiles(pluginPath, "*.dll", SearchOption.AllDirectories);
 
-            // use loaderManifest.Assemblies for the whitelist check, but not for the actual returned assemblies
+            // should never happen and it safeguarded against in JellyfinLoader.cs, but just to be sure.
+            if (pluginManifest.Assemblies.Count != 1)
+            {
+                throw new InvalidOperationException($"Error while discovering DLLs for the plugin at {pluginPath}: Its meta.json contains more than 1 DLL in its \"assemblies\" entry. It should contain just the JellyfinLoaderStub assembly, its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).");
+            }
+
+            var stubEntry = pluginManifest.Assemblies.First();
+            var stubPath = Path.Combine(pluginPath, stubEntry).Canonicalize();
+
+            // use loaderManifest.Assemblies instead of pluginManifest.Assemblies
             if (pluginDlls.Length > 0 && loaderManifest.Assemblies.Count > 0)
             {
                 // _logger.LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", plugin.Name);
 
                 var canonicalizedPaths = new List<string>();
-                foreach (var path in manifestAssemblies)
+                foreach (var path in loaderManifest.Assemblies)
                 {
-                    var canonicalized = Path.Combine(plugin.Path, path).Canonicalize();
+                    var canonicalized = Path.Combine(pluginPath, path).Canonicalize();
 
                     // Ensure we stay in the plugin directory.
-                    if (!canonicalized.StartsWith(plugin.Path.NormalizePath(), StringComparison.Ordinal))
+                    if (!canonicalized.StartsWith(pluginPath.NormalizePath(), StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException($"Assembly path {path} is not inside the plugin directory.");
+                    } else if (canonicalized == stubPath)
+                    {
+                        throw new InvalidOperationException($"Plugin at {pluginPath} included the JellyfinLoaderStub inside its loader.json's \"assemblies\" entry. For JellyfinLoader plugins, the JellyfinLoaderStub should be the one and only entry in the meta.json file, while its loader.json's \"assemblies\" entry can optionally contain an actual assembly whitelist (or be left blank).");
+                    }
+
+                    canonicalizedPaths.Add(canonicalized);
+                }
+
+                var intersected = pluginDlls.Intersect(canonicalizedPaths);
+
+                if (intersected.Count() != canonicalizedPaths.Count)
+                {
+                    throw new InvalidOperationException($"Plugin {pluginManifest.Name} contained assembly paths that were not found in the directory.");
+                }
+
+                return (stubPath, intersected);
+            }
+            else
+            {
+                // No whitelist, default to loading all DLLs in plugin directory except the stub.
+                return (stubPath, pluginDlls.Where(path => path != stubPath));
+            }
+        }
+
+        // PluginManager#TryGetPluginDlls
+        public IReadOnlyList<string> GetPluginDLLs(string pluginPath, PluginManifest pluginManifest)
+        {
+            ArgumentNullException.ThrowIfNull(nameof(pluginManifest));
+            ArgumentNullException.ThrowIfNull(nameof(pluginPath));
+
+            var pluginDlls = Directory.GetFiles(pluginPath, "*.dll", SearchOption.AllDirectories);
+
+            if (pluginDlls.Length > 0 && pluginManifest.Assemblies.Count > 0)
+            {
+                // _logger.LogInformation("Registering whitelisted assemblies for plugin \"{Plugin}\"...", plugin.Name);
+
+                var canonicalizedPaths = new List<string>();
+                foreach (var path in pluginManifest.Assemblies)
+                {
+                    var canonicalized = Path.Combine(pluginPath, path).Canonicalize();
+
+                    // Ensure we stay in the plugin directory.
+                    if (!canonicalized.StartsWith(pluginPath.NormalizePath(), StringComparison.Ordinal))
                     {
                         throw new InvalidOperationException($"Assembly path {path} is not inside the plugin directory.");
                     }
@@ -50,7 +105,7 @@ namespace JellyfinLoader.Helpers
 
                 if (intersected.Count != canonicalizedPaths.Count)
                 {
-                    throw new InvalidOperationException($"Plugin {plugin.Name} contained assembly paths that were not found in the directory.");
+                    throw new InvalidOperationException($"Plugin {pluginManifest.Name} contained assembly paths that were not found in the directory.");
                 }
 
                 return intersected;

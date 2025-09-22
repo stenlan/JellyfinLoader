@@ -21,6 +21,7 @@ namespace JellyfinLoader.Helpers
 {
     internal class Utils : IHttpClientFactory
     {
+        internal const int MainDepPoolID = -1;
         internal readonly Version MinimumVersion = new Version(0, 0, 0, 1);
         internal readonly Version AppVersion = typeof(ApplicationHost).Assembly.GetName().Version!;
         internal readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions(JsonDefaults.Options)

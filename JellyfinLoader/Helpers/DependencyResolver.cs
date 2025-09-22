@@ -1,30 +1,38 @@
 ﻿using JellyfinLoader.Models;
+using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Updates;
 using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace JellyfinLoader.Helpers
 {
-    internal class DependencyResolver(Utils utils, PluginHelper pluginHelper)
+    internal class DependencyResolver(Utils utils, PluginIOHelper pluginIOHelper)
     {
         // key is plugin Guid
         private Dictionary<Guid, List<InstalledPluginInfo>> _installedPlugins = [];
 
         // dependency plugin Guid to InternalDependencyInfo mapping
-        private Dictionary<Guid, List<InternalDependencyInfo>> allDependencies = [];
+        private Dictionary<Guid, List<InternalDependencyInfo>> _allDependencies = [];
 
-        private int _highestDepPoolID = -1;
+        private int _highestDepPoolID = Utils.MainDepPoolID;
 
         // sparse mapping of dependency pool ID to dependency pool
         // a dependency pool is a list of Guids that defines the order in which to load the plugins
-        private readonly Dictionary<int, List<Guid>> _dependencyPools = new();
+        internal readonly Dictionary<int, List<Guid>> dependencyPools = [];
 
         // mapping of plugin ID to dep pool ID
-        private readonly Dictionary<Guid, int> _pluginToPoolMap = new();
+        private readonly Dictionary<Guid, int> _pluginToPoolMap = [];
 
         public async Task ResolveAll()
         {
+            // TODO: maybe use constructor or something
+            _installedPlugins.Clear();
+            _allDependencies.Clear();
+            dependencyPools.Clear();
+            _pluginToPoolMap.Clear();
+
             var pluginDirs = Directory.EnumerateDirectories(utils.PluginsPath, "*.*", SearchOption.TopDirectoryOnly);
 
             // TODO: more thoroughly handle disabled states, conflicting versions, missing meta.jsons, etc
@@ -34,7 +42,7 @@ namespace JellyfinLoader.Helpers
             // first, discover all installed plugins and dependencies
             foreach (var pluginDir in pluginDirs)
             {
-                var pluginManifest = pluginHelper.ReadPluginManifest(pluginDir);
+                var pluginManifest = pluginIOHelper.ReadPluginManifest(pluginDir);
                 if (pluginManifest == null)
                 {
                     utils.Logger.LogWarning("Plugin at {pluginDir} does not have a meta.json file. JellyfinLoader will not consider it as a dependency nor a dependent.", pluginDir);
@@ -50,7 +58,7 @@ namespace JellyfinLoader.Helpers
                     continue;
                 }
 
-                foreach (var dependencyInfo in AddInstalledPlugin(new InstalledPluginInfo(pluginManifest, pluginHelper.ReadLoaderManifest(pluginDir), pluginVersion!, pluginDir)))
+                foreach (var dependencyInfo in AddInstalledPlugin(new InstalledPluginInfo(pluginManifest, pluginIOHelper.ReadLoaderManifest(pluginDir), pluginVersion!, pluginDir)))
                 {
                     currentRoundDependencies.GetOrAdd(dependencyInfo.ID, []).Add(dependencyInfo);
                 }
@@ -103,11 +111,37 @@ namespace JellyfinLoader.Helpers
             {
                 // at this point we can assume there is either 0 or 1 enabled instances of a plugin
                 var pluginInfo = pluginInfos.FirstOrDefault(info => info.Manifest.Status == PluginStatus.Active);
-
                 if (pluginInfo is null) continue;
 
                 AssignToDependencyPool(pluginInfo);
             }
+        }
+
+        public List<Guid> GetDependencyPool(Guid pluginID, out int poolID)
+        {
+            poolID = _pluginToPoolMap[pluginID];
+            return dependencyPools[poolID];
+        }
+
+        public IEnumerable<InstalledPluginInfo> GetActivePlugins()
+        {
+            foreach (var (pluginId, pluginInfos) in _installedPlugins)
+            {
+                // at this point we can assume there is either 0 or 1 enabled instances of a plugin
+                var pluginInfo = pluginInfos.FirstOrDefault(info => info.Manifest.Status == PluginStatus.Active);
+                if (pluginInfo is null) continue;
+
+                yield return pluginInfo;
+            }
+        }
+
+        /// <summary>
+        /// Gets the <see cref="InstalledPluginInfo"/> for the plugin with id <paramref name="pluginID"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public InstalledPluginInfo? GetPluginInfo(Guid pluginID)
+        {
+            return _installedPlugins[pluginID].FirstOrDefault(i => i.Manifest.Status == PluginStatus.Active);
         }
 
         /// <summary>
@@ -213,24 +247,24 @@ namespace JellyfinLoader.Helpers
             {
                 _highestDepPoolID++;
 
-                _dependencyPools[_highestDepPoolID] = [pluginID];
+                dependencyPools[_highestDepPoolID] = [pluginID];
                 _pluginToPoolMap[pluginID] = _highestDepPoolID;
 
                 return _highestDepPoolID;
             }
 
             // get dependency pool ID of our first dependency, assigning it first if it had not yet been
-            int depPoolID = AssignToDependencyPool(_installedPlugins[dependencies[0].ID].First(i => i.Manifest.Status == PluginStatus.Active));
-            var dependencyPool = _dependencyPools[depPoolID];
+            int depPoolID = AssignToDependencyPool(GetPluginInfo(dependencies[0].ID)!);
+            var dependencyPool = dependencyPools[depPoolID];
 
             // merge all our other dependencies' dependency pools into the first one
             for (int i = 1; i < dependencies.Count; i++)
             {
-                int sourceDepPoolID = AssignToDependencyPool(_installedPlugins[dependencies[i].ID].First(i => i.Manifest.Status == PluginStatus.Active));
+                int sourceDepPoolID = AssignToDependencyPool(GetPluginInfo(dependencies[i].ID)!);
                 if (sourceDepPoolID == depPoolID) continue;
 
-                var sourceDepPool = _dependencyPools[sourceDepPoolID];
-                _dependencyPools.Remove(sourceDepPoolID);
+                var sourceDepPool = dependencyPools[sourceDepPoolID];
+                dependencyPools.Remove(sourceDepPoolID);
 
                 dependencyPool.EnsureCapacity(dependencyPool.Count + sourceDepPool.Count);
 
@@ -251,14 +285,14 @@ namespace JellyfinLoader.Helpers
         // TODO: multi-level dependency resolving, abi compatibility checks
         private async Task<InstalledPluginInfo> InstallDependency(DependencyInfo info)
         {
-            var packages = await pluginHelper.GetPackages(info.Manifest, false);
+            var packages = await pluginIOHelper.GetPackages(info.Manifest, false);
             var package = packages.FirstOrDefault(package => package.Id == info.ID)
                 ?? throw new DependencyResolverException($"Package with ID {info.ID} not found in repository at {info.Manifest}.");
 
             var version = package.Versions.FirstOrDefault(version => info.Versions.Contains(version.VersionNumber))
                 ?? throw new DependencyResolverException($"None of versions \"{string.Join(", ", info.Versions)}\" of package with ID {info.ID} were found in repository at {info.Manifest}.");
 
-            var installDir = await pluginHelper.PerformPackageInstallation(new InstallationInfo()
+            var installDir = await pluginIOHelper.PerformPackageInstallation(new InstallationInfo()
             {
                 Changelog = version.Changelog,
                 Id = package.Id,
@@ -269,7 +303,7 @@ namespace JellyfinLoader.Helpers
                 PackageInfo = package
             }, PluginStatus.Active);
 
-            var pluginManifest = pluginHelper.ReadPluginManifest(installDir) ?? throw new InvalidOperationException($"Failed to read plugin manifest for plugin {package.Name} immediately after installing.");
+            var pluginManifest = pluginIOHelper.ReadPluginManifest(installDir) ?? throw new InvalidOperationException($"Failed to read plugin manifest for plugin {package.Name} immediately after installing.");
 
             if (pluginManifest.Status != PluginStatus.Active)
             {
@@ -277,7 +311,7 @@ namespace JellyfinLoader.Helpers
             }
 
             // read pluginManifest from file again, since it might have superceded another and gotten the "Restart" memory-only status
-            return new InstalledPluginInfo(pluginManifest, pluginHelper.ReadLoaderManifest(installDir), version.VersionNumber, installDir);
+            return new InstalledPluginInfo(pluginManifest, pluginIOHelper.ReadLoaderManifest(installDir), version.VersionNumber, installDir);
         }
 
         private IEnumerable<InternalDependencyInfo> AddInstalledPlugin(InstalledPluginInfo info)
@@ -299,23 +333,28 @@ namespace JellyfinLoader.Helpers
             {
                 var dependencyInfo = new InternalDependencyInfo(dependency.Manifest, dependency.ID, dependency.Versions, info.Manifest.Id);
                 yield return dependencyInfo;
-                allDependencies.GetOrAdd(dependency.ID, []).Add(dependencyInfo);
+                _allDependencies.GetOrAdd(dependency.ID, []).Add(dependencyInfo);
 
             }
         }
 
-        private void ChangePluginState(InstalledPluginInfo plugin, PluginStatus state)
+        internal void ChangePluginState(string pluginPath, PluginManifest pluginManifest, PluginStatus state)
         {
-            ArgumentException.ThrowIfNullOrEmpty(plugin.Path);
+            ArgumentException.ThrowIfNullOrEmpty(pluginPath);
 
-            if (plugin.Manifest.Status == state)
+            if (pluginManifest.Status == state)
             {
                 // No need to save as the state hasn't changed.
                 return;
             }
 
-            plugin.Manifest.Status = state;
-            pluginHelper.SavePluginManifest(plugin.Manifest, plugin.Path);
+            pluginManifest.Status = state;
+            pluginIOHelper.SavePluginManifest(pluginManifest, pluginPath);
+        }
+
+        internal void ChangePluginState(InstalledPluginInfo plugin, PluginStatus state)
+        {
+            ChangePluginState(plugin.Path, plugin.Manifest, state);
         }
     }
 }
