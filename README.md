@@ -15,7 +15,7 @@ Some plugins want to do things that aren't easily done by a normal Jellyfin plug
 ## How do I use this?
 **If you are a Jellyfin user** and you are trying to install a plugin that depends on JellyfinLoader, you won't need to do anything. JellyfinLoader should automatically take care of installing and updating itself.
 
-**If you are a Jellyfin plugin developer**, read along.
+**If you are a Jellyfin plugin developer**, read along (or view the [example plugin](https://github.com/stenlan/JellyfinLoader-example-plugin)).
 
 ### Setup
 - Install [the JellyfinLoaderStub NuGet package](https://www.nuget.org/packages/JellyfinLoaderStub/) or simply download its latest release from [the GitHub releases page](https://github.com/stenlan/JellyfinLoader/releases/latest) and include it in your project.
