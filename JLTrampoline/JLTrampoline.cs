@@ -88,13 +88,23 @@ namespace JLTrampoline
             var importer = new Importer(module);
 
             ModuleDefMD thisModule = ModuleDefMD.Load(typeof(CILHolder).Module, modCtx);
-            var testCIL = thisModule.Find(typeof(CILHolder).FullName, false)!;
-            var tryLoadDLLMeth = testCIL.FindMethod(nameof(CILHolder.TryLoadDLL));
+            var cilHolder = thisModule.Find(typeof(CILHolder).FullName, false)!;
+            var tryLoadDLLMeth = cilHolder.FindMethod(nameof(CILHolder.TryLoadDLL));
 
             var injectionType = module.Find("Serilog.Extensions.Logging.SerilogLoggerFactory", false)!;
+
             var loaderMethod = new MethodDefUser(tryLoadDLLMeth.Name, tryLoadDLLMeth.MethodSig, tryLoadDLLMeth.ImplAttributes, tryLoadDLLMeth.Attributes);
             injectionType.Methods.Add(loaderMethod);
             loaderMethod.Body = new CilBody(tryLoadDLLMeth.Body.InitLocals, tryLoadDLLMeth.Body.Instructions, tryLoadDLLMeth.Body.ExceptionHandlers, tryLoadDLLMeth.Body.Variables);
+
+            // rewrite declaring types for instructions
+            foreach (var instruction in tryLoadDLLMeth.Body.Instructions)
+            {
+                if (instruction.Operand is FieldDef fieldDef && fieldDef.DeclaringType.FullName == cilHolder.FullName)
+                {
+                    fieldDef.DeclaringType = injectionType;
+                }
+            }
 
             var injectionMethod = injectionType.Methods.First(m => m.Name == "CreateLogger");
 

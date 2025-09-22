@@ -5,6 +5,7 @@ using Jellyfin.Extensions.Json.Converters;
 using Jellyfin.Server;
 using Jellyfin.Server.Helpers;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Plugins;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
@@ -18,9 +19,14 @@ namespace JLTrampoline
     /// </summary>
     internal class CILHolder
     {
+        private static bool _hookHasRun = false;
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void TryLoadDLL()
         {
+            if (_hookHasRun) return;
+            _hookHasRun = true;
+
             var pluginsDir = StartupHelpers.CreateApplicationPaths(Parser.Default.ParseArguments<StartupOptions>(Environment.GetCommandLineArgs()).Value).PluginsPath;
             var metaPaths = Directory.EnumerateFiles(pluginsDir, "meta.json", SearchOption.AllDirectories);
             string? maxMetaPath = null;
@@ -45,7 +51,7 @@ namespace JLTrampoline
                 try
                 {
                     var manifest = JsonSerializer.Deserialize<PluginManifest>(File.ReadAllBytes(metaPath), _jsonOptions);
-                    if (manifest?.Id.ToString() != JLTrampoline.PluginId) continue;
+                    if (manifest?.Id.ToString() != JLTrampoline.PluginId || manifest?.Status != PluginStatus.Active) continue;
 
                     var version = Version.Parse(manifest.Version);
                     if (maxMetaPath == null || version > maxVersion)

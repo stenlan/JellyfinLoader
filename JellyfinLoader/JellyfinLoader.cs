@@ -13,7 +13,6 @@ namespace JellyfinLoader
     {       
         private static JellyfinLoader? _instance;
         public static JellyfinLoader Instance { get => _instance ?? throw new NullReferenceException("Attempted to access JellyfinLoader instance before its initialization."); }
-        private static bool _bootstrapRan = false;
         
         private bool _coldStart = true;
 
@@ -101,10 +100,7 @@ namespace JellyfinLoader
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Bootstrap()
         {
-            // prevent stack overflow due to recursion through createlogger injection, and prevent double bootstrapping altogether
-            if (_bootstrapRan || _instance != null) return;
-            _bootstrapRan = true;
-            _instance = new JellyfinLoader();
+            _instance ??= new JellyfinLoader();
         }
     }
 }
