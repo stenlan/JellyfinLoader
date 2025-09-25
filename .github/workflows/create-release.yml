@@ -1,0 +1,61 @@
+name: Create release
+run-name: Create release (${{inputs.release_type}})
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        type: choice
+        options:
+        - major
+        - minor
+        - patch
+jobs:
+  create_release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+          fetch-depth: 0
+      - name: Setup node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24.x'
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: | 
+            8.0.x
+            9.0.x
+      - name: Increase version
+        id: increase_version
+        run: echo "NEW_VERSION=$(node .github/node/increase-version.js ${{inputs.release_type}})" >> "$GITHUB_OUTPUT"
+      - name: Pack projects
+        run: |
+          dotnet pack JellyfinLoaderStub/JellyfinLoaderStub-10.11.0.csproj
+          echo '{"sdk":{"version":"8.0.0","rollForward":"latestFeature"}}' > global.json
+          dotnet pack JellyfinLoaderStub/JellyfinLoaderStub-10.10.7.csproj
+      - name: Push updated project file
+        run: |
+          git config --global user.name "${{ github.triggering_actor }}"
+          git add JellyfinLoaderStub/JellyfinLoaderStub-common.csproj
+          git commit -am "Release v${{ steps.increase_version.outputs.NEW_VERSION }}"
+          git push
+      - name: Collect DLLs
+        run: .github/scripts/collect-versioned-dlls.sh
+      - name: Publish to NuGet
+        env:
+          NUGET_PUBLISH_KEY: ${{ secrets.NUGET_PUBLISH_KEY }}
+        run: .github/scripts/nuget-publish.sh
+      - name: Release to GitHub
+        uses: softprops/action-gh-release@v2.3.3
+        with:
+          files: ./collected/*.dll
+          tag_name: v${{ steps.increase_version.outputs.NEW_VERSION }}
+          name: Release v${{ steps.increase_version.outputs.NEW_VERSION }}
+          target_commitish: ${{github.ref_name}}

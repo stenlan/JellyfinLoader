@@ -1,5 +1,4 @@
-﻿using Emby.Server.Implementations.Plugins;
-using JellyfinLoader.Helpers;
+﻿using JellyfinLoader.Helpers;
 using JellyfinLoader.Models;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;

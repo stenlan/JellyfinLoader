@@ -1,5 +1,4 @@
 ﻿using CommandLine;
-using Jellyfin.Data.Entities.Libraries;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Extensions.Json.Converters;
 using Jellyfin.Server;

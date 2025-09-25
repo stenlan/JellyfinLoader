@@ -3,17 +3,21 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36414.22
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JLTrampoline", "JLTrampoline\JLTrampoline.csproj", "{E8233667-38B9-E8A6-8755-704E4BF8B91B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JLTrampoline-10.10.7", "JLTrampoline\JLTrampoline-10.10.7.csproj", "{E8233667-38B9-E8A6-8755-704E4BF8B91B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JellyfinLoader", "JellyfinLoader\JellyfinLoader.csproj", "{0EB7322A-D6E6-456F-A13B-538B6A9D22EF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JellyfinLoader-10.10.7", "JellyfinLoader\JellyfinLoader-10.10.7.csproj", "{0EB7322A-D6E6-456F-A13B-538B6A9D22EF}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
+		JellyfinLoader\JellyfinLoader-common.csproj = JellyfinLoader\JellyfinLoader-common.csproj
+		JLTrampoline\JLTrampoline-common.csproj = JLTrampoline\JLTrampoline-common.csproj
 		README.md = README.md
 		repository.json = repository.json
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JellyfinLoaderStub", "JellyfinLoaderStub\JellyfinLoaderStub.csproj", "{7A5865D6-D12D-4603-9069-B0DCDF1EDFBA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JellyfinLoader-10.11.0", "JellyfinLoader\JellyfinLoader-10.11.0.csproj", "{C976C250-0B5D-4160-CB1A-620881AF41C5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JLTrampoline-10.11.0", "JLTrampoline\JLTrampoline-10.11.0.csproj", "{B7EB2689-5881-675F-28B5-24A55C23507F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,10 +33,14 @@ Global
 		{0EB7322A-D6E6-456F-A13B-538B6A9D22EF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0EB7322A-D6E6-456F-A13B-538B6A9D22EF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0EB7322A-D6E6-456F-A13B-538B6A9D22EF}.Release|Any CPU.Build.0 = Release|Any CPU
-		{7A5865D6-D12D-4603-9069-B0DCDF1EDFBA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7A5865D6-D12D-4603-9069-B0DCDF1EDFBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7A5865D6-D12D-4603-9069-B0DCDF1EDFBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7A5865D6-D12D-4603-9069-B0DCDF1EDFBA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C976C250-0B5D-4160-CB1A-620881AF41C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C976C250-0B5D-4160-CB1A-620881AF41C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C976C250-0B5D-4160-CB1A-620881AF41C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C976C250-0B5D-4160-CB1A-620881AF41C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B7EB2689-5881-675F-28B5-24A55C23507F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B7EB2689-5881-675F-28B5-24A55C23507F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B7EB2689-5881-675F-28B5-24A55C23507F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B7EB2689-5881-675F-28B5-24A55C23507F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,109 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <VersionPrefix>0.1.1</VersionPrefix>
+    <VersionSuffix>$(TargetJellyfinRef)</VersionSuffix>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <WarningsAsErrors>Nullable</WarningsAsErrors>
+    <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
+    <Title>JellyfinLoader</Title>
+    <Authors>stenlan</Authors>
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+    <PackageProjectUrl>https://github.com/stenlan/JellyfinLoader</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/stenlan/JellyfinLoader</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <BuiltJellyfinDepPath>$(BaseOutputPath)/dep/$(Configuration)/$(TargetFramework)</BuiltJellyfinDepPath>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <AssemblyName>JellyfinLoader</AssemblyName>
+    <AssemblyName Condition="'$(APPEND_VERSION_TO_ASSEMBLY)' == 'TRUE'">JellyfinLoader_$(TargetJellyfinRef)</AssemblyName>
+	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.4.1"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove=".gitignore" />
+    <None Remove="README.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="build\**" />
+    <EmbeddedResource Remove="build\**" />
+    <None Remove="build\**" />
+  </ItemGroup>
+
+  <Target Name="EnsureJellyfinTree" BeforeTargets="BuildJellyfinServer" Condition="!Exists('$(BaseOutputPath)/dep/tree')">
+    <MakeDir Directories="$(BaseOutputPath)/dep"/>
+	<Exec WorkingDirectory="../jellyfin" Command="git fetch"/>
+	<Exec WorkingDirectory="../jellyfin" Command="git archive --format zip --output ../JellyfinLoader/$(BaseOutputPath)/dep/tree.zip $(TargetJellyfinRef)"/>
+    <Unzip SourceFiles="$(BaseOutputPath)\dep\tree.zip" DestinationFolder="$(BaseOutputPath)\dep\tree"/>
+    <Delete Files="$(BaseOutputPath)\dep\tree.zip"/>
+    <Exec WorkingDirectory="$(BaseOutputPath)/dep/tree" Command="dotnet restore"/>
+  </Target>
+
+  <Target Name="BuildJellyfinServer" BeforeTargets="ResolveAssemblyReferences;PreBuildEvent" Condition="!Exists('$(BuiltJellyfinDepPath)')">
+    <Exec WorkingDirectory="$(BaseOutputPath)/dep/tree" Command="dotnet build Jellyfin.Server -c $(Configuration) -f $(TargetFramework) -o ../$(Configuration)/$(TargetFramework)" />
+  </Target>
+
+  <Target Name="CopyToDist" AfterTargets="Build" Condition="'$(SKIP_COPY_TO_DIST)' == ''">
+	<ItemGroup>
+	  <_FilesToCopy Include="$(BaseOutputPath)\$(Configuration)\**\*.dll"/>
+	</ItemGroup>
+	<Copy SourceFiles="@(_FilesToCopy)" DestinationFolder="..\dist\$(TargetJellyfinRef)"/>
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="Emby.Server.Implementations">
+      <HintPath>$(BuiltJellyfinDepPath)\Emby.Server.Implementations.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="jellyfin">
+      <HintPath>$(BuiltJellyfinDepPath)\jellyfin.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="Serilog.Extensions.Logging.dll">
+      <HintPath>$(BuiltJellyfinDepPath)\Serilog.Extensions.Logging.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions.dll">
+      <HintPath>$(BuiltJellyfinDepPath)\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+	<Reference Include="Microsoft.Extensions.Http.dll">
+	  <HintPath>$(BuiltJellyfinDepPath)\Microsoft.Extensions.Http.dll</HintPath>
+	  <Private>False</Private>
+	</Reference>
+
+    <Reference Include="MediaBrowser.Common">
+      <HintPath>$(BuiltJellyfinDepPath)\MediaBrowser.Common.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="MediaBrowser.Controller">
+      <HintPath>$(BuiltJellyfinDepPath)\MediaBrowser.Controller.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="MediaBrowser.Model">
+      <HintPath>$(BuiltJellyfinDepPath)\MediaBrowser.Model.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="Jellyfin.Extensions.dll">
+      <HintPath>$(BuiltJellyfinDepPath)\Jellyfin.Extensions.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+
+    <Reference Include="CommandLine.dll">
+      <HintPath>$(BuiltJellyfinDepPath)\CommandLine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+{
+  "category": "General",
+  "changelog": "",
+  "description": "Custom Jellyfin plugin loader",
+  "guid": "d524071f-b95c-452d-825e-c772f68b5957",
+  "name": "JellyfinLoader",
+  "overview": "",
+  "owner": "Stenlan",
+  "targetAbi": "10.10.7.0",
+  "timestamp": "2025-09-22T20:00:00.0000000Z",
+  "version": "0.1.1.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "imagePath": "",
+  "assemblies": [
+    "JLTrampoline.dll"
+  ]
+}

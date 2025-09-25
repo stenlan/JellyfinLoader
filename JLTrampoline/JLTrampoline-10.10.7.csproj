@@ -1,0 +1,11 @@
+﻿<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <TargetJellyfinRef>v10.10.7</TargetJellyfinRef>
+	<MSBuildProjectExtensionsPath>build\$(TargetJellyfinRef)</MSBuildProjectExtensionsPath>
+	<BaseIntermediateOutputPath>$(MSBuildProjectExtensionsPath)\obj</BaseIntermediateOutputPath>
+	<BaseOutputPath>$(MSBuildProjectExtensionsPath)\bin</BaseOutputPath>
+  </PropertyGroup>
+  
+  <Import Project="JLTrampoline-common.csproj" />
+</Project>
