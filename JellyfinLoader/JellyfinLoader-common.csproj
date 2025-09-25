@@ -16,7 +16,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyName>JellyfinLoader</AssemblyName>
     <AssemblyName Condition="'$(APPEND_VERSION_TO_ASSEMBLY)' == 'TRUE'">JellyfinLoader_$(TargetJellyfinRef)</AssemblyName>
-	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <CopyPattern>$(BaseOutputPath)\$(Configuration)\$(TargetFramework)\*.dll</CopyPattern>
+    <CopyPattern Condition="'$(IS_PUBLISH)' == 'TRUE'">$(BaseOutputPath)\$(Configuration)\$(TargetFramework)\publish\*.dll</CopyPattern>
   </PropertyGroup>
   
   <ItemGroup>
@@ -36,8 +38,8 @@
 
   <Target Name="EnsureJellyfinTree" BeforeTargets="BuildJellyfinServer" Condition="!Exists('$(BaseOutputPath)/dep/tree')">
     <MakeDir Directories="$(BaseOutputPath)/dep"/>
-	<Exec WorkingDirectory="../jellyfin" Command="git fetch"/>
-	<Exec WorkingDirectory="../jellyfin" Command="git archive --format zip --output ../JellyfinLoader/$(BaseOutputPath)/dep/tree.zip $(TargetJellyfinRef)"/>
+    <Exec WorkingDirectory="../jellyfin" Command="git fetch"/>
+    <Exec WorkingDirectory="../jellyfin" Command="git archive --format zip --output ../JellyfinLoader/$(BaseOutputPath)/dep/tree.zip $(TargetJellyfinRef)"/>
     <Unzip SourceFiles="$(BaseOutputPath)\dep\tree.zip" DestinationFolder="$(BaseOutputPath)\dep\tree"/>
     <Delete Files="$(BaseOutputPath)\dep\tree.zip"/>
     <Exec WorkingDirectory="$(BaseOutputPath)/dep/tree" Command="dotnet restore"/>
@@ -47,11 +49,11 @@
     <Exec WorkingDirectory="$(BaseOutputPath)/dep/tree" Command="dotnet build Jellyfin.Server -c $(Configuration) -f $(TargetFramework) -o ../$(Configuration)/$(TargetFramework)" />
   </Target>
 
-  <Target Name="CopyToDist" AfterTargets="Build" Condition="'$(SKIP_COPY_TO_DIST)' == ''">
-	<ItemGroup>
-	  <_FilesToCopy Include="$(BaseOutputPath)\$(Configuration)\**\*.dll"/>
-	</ItemGroup>
-	<Copy SourceFiles="@(_FilesToCopy)" DestinationFolder="..\dist\$(TargetJellyfinRef)"/>
+  <Target Name="CopyToDist" AfterTargets="Build">
+    <ItemGroup>
+      <_FilesToCopy Include="$(CopyPattern)"/>
+    </ItemGroup>
+    <Copy SourceFiles="@(_FilesToCopy)" DestinationFolder="..\dist\$(TargetJellyfinRef)"/>
   </Target>
 
   <ItemGroup>
@@ -75,10 +77,10 @@
       <Private>False</Private>
     </Reference>
 
-	<Reference Include="Microsoft.Extensions.Http.dll">
-	  <HintPath>$(BuiltJellyfinDepPath)\Microsoft.Extensions.Http.dll</HintPath>
-	  <Private>False</Private>
-	</Reference>
+    <Reference Include="Microsoft.Extensions.Http.dll">
+      <HintPath>$(BuiltJellyfinDepPath)\Microsoft.Extensions.Http.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
 
     <Reference Include="MediaBrowser.Common">
       <HintPath>$(BuiltJellyfinDepPath)\MediaBrowser.Common.dll</HintPath>

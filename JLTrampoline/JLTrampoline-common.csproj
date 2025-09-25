@@ -17,6 +17,8 @@
     <AssemblyName>JLTrampoline</AssemblyName>
     <AssemblyName Condition="'$(APPEND_VERSION_TO_ASSEMBLY)' == 'TRUE'">JLTrampoline_$(TargetJellyfinRef)</AssemblyName>
 	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+	<CopyPattern>$(BaseOutputPath)\$(Configuration)\$(TargetFramework)\*.dll</CopyPattern>
+	<CopyPattern Condition="'$(IS_PUBLISH)' == 'TRUE'">$(BaseOutputPath)\$(Configuration)\$(TargetFramework)\publish\*.dll</CopyPattern>
   </PropertyGroup>
   
   <ItemGroup>
@@ -47,9 +49,9 @@
     <Exec WorkingDirectory="$(BaseOutputPath)/dep/tree" Command="dotnet build Jellyfin.Server -c $(Configuration) -f $(TargetFramework) -o ../$(Configuration)/$(TargetFramework)" />
   </Target>
 
-  <Target Name="CopyToDist" AfterTargets="Build" Condition="'$(SKIP_COPY_TO_DIST)' == ''">
+  <Target Name="CopyToDist" AfterTargets="Build">
 	<ItemGroup>
-	  <_FilesToCopy Include="$(BaseOutputPath)\$(Configuration)\**\*.dll"/>
+	  <_FilesToCopy Include="$(CopyPattern)"/>
 	</ItemGroup>
 	<Copy SourceFiles="@(_FilesToCopy)" DestinationFolder="..\dist\$(TargetJellyfinRef)"/>
   </Target>

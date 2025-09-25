@@ -24,6 +24,10 @@ function increaseVersion(versionString, increaseType) {
     return splitVersion.join(".");
 }
 
+function capVersion(versionString, numElems) {
+    return versionString.split(".").slice(0, numElems).join(".");
+}
+
 const increaseType = process.argv[2];
 const metaPath = "meta.json";
 
@@ -31,10 +35,12 @@ let metaJSON = JSON.parse(await readFile(metaPath, "utf-8"));
 let newVersion = increaseVersion(metaJSON.version, increaseType);
 metaJSON.version = newVersion;
 
+newVersion = capVersion(newVersion, 3);
+
 await writeFile(metaPath, JSON.stringify(metaJSON, null, 2));
 
 for (const projFile of ["JellyfinLoader/JellyfinLoader-common.csproj", "JLTrampoline/JLTrampoline-common.csproj"]) {
-    await writeFile(projFile, regexReplace(await readFile(projFile, "utf-8"), /<VersionPrefix>(.+?)<\/VersionPrefix>/, () => newVersion));
+    await writeFile(projFile, regexReplace(await readFile(projFile, "utf-8"), /<VersionPrefix>(.+?)<\/VersionPrefix>/, () => `<VersionPrefix>${newVersion}</VersionPrefix>`));
 }
 
 console.log(newVersion);

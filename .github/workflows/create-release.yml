@@ -35,27 +35,30 @@ jobs:
       - name: Increase version
         id: increase_version
         run: echo "NEW_VERSION=$(node .github/node/increase-version.js ${{inputs.release_type}})" >> "$GITHUB_OUTPUT"
-      - name: Pack projects
-        run: |
-          dotnet pack JellyfinLoaderStub/JellyfinLoaderStub-10.11.0.csproj
-          echo '{"sdk":{"version":"8.0.0","rollForward":"latestFeature"}}' > global.json
-          dotnet pack JellyfinLoaderStub/JellyfinLoaderStub-10.10.7.csproj
-      - name: Push updated project file
-        run: |
-          git config --global user.name "${{ github.triggering_actor }}"
-          git add JellyfinLoaderStub/JellyfinLoaderStub-common.csproj
-          git commit -am "Release v${{ steps.increase_version.outputs.NEW_VERSION }}"
-          git push
-      - name: Collect DLLs
-        run: .github/scripts/collect-versioned-dlls.sh
-      - name: Publish to NuGet
+      - name: Build projects
         env:
-          NUGET_PUBLISH_KEY: ${{ secrets.NUGET_PUBLISH_KEY }}
-        run: .github/scripts/nuget-publish.sh
+          IS_PUBLISH: 'TRUE'
+        run: |
+          dotnet publish JellyfinLoader/JellyfinLoader-10.11.0.csproj
+          dotnet publish JLTrampoline/JLTrampoline-10.11.0.csproj
+          echo '{"sdk":{"version":"8.0.0","rollForward":"latestFeature"}}' > global.json
+          dotnet publish JellyfinLoader/JellyfinLoader-10.10.7.csproj
+          dotnet publish JLTrampoline/JLTrampoline-10.10.7.csproj
+      - name: Package releases
+        env:
+          newVersion: ${{ steps.increase_version.outputs.NEW_VERSION }}
+        run: |
+          npm install archiver --save
+          node .github/node/package-releases.js
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2.3.3
         with:
-          files: ./collected/*.dll
+          files: ./dist/*.zip
           tag_name: v${{ steps.increase_version.outputs.NEW_VERSION }}
           name: Release v${{ steps.increase_version.outputs.NEW_VERSION }}
           target_commitish: ${{github.ref_name}}
+      - name: Push updated files
+        run: |
+          git config --global user.name "${{ github.triggering_actor }}"
+          git commit -am "Release v${{ steps.increase_version.outputs.NEW_VERSION }}"
+          git push
