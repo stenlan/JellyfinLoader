@@ -28,9 +28,9 @@ function md5sum(path) {
 }
 
 const newVersion = process.env.newVersion;
-const distFolder = "dist";
+const distFolder = "./dist";
 const jfVersions = await readdir(distFolder);
-const metaPath = "meta.json";
+const metaPath = "./meta.json";
 const metaJSON = JSON.parse(await readFile(metaPath, "utf-8"));
 const newVersions = [];
 
@@ -60,7 +60,7 @@ for (const jfVersion of jfVersions) {
     });
 }
 
-const repoPath = "repository.json";
+const repoPath = "./repository.json";
 const repoJSON = JSON.parse(await readFile(repoPath, "utf-8"));
 
 repoJSON.find(obj => obj.name === "JellyfinLoader").versions.unshift(...newVersions);

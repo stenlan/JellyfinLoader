@@ -51,7 +51,6 @@ jobs:
         env:
           newVersion: ${{ steps.increase_version.outputs.NEW_VERSION }}
         run: |
-          npm install archiver --save
           node .github/node/package-releases.js
       - name: Push updated files
         run: |
