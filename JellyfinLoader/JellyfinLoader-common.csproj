@@ -6,7 +6,7 @@
   </PropertyGroup>
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
   <PropertyGroup>
-    <VersionPrefix>0.1.1</VersionPrefix>
+    <VersionPrefix>0.2.0</VersionPrefix>
     <VersionSuffix>$(TargetJellyfinRef)</VersionSuffix>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

@@ -8,6 +8,22 @@
     "overview": "",
     "versions": [
       {
+        "checksum": "dbfac3c8e8ffd8cd9dccea43a46f5ea7",
+        "changelog": "",
+        "targetAbi": "10.10.7.0",
+        "sourceUrl": "https://github.com/stenlan/JellyfinLoader/releases/download/v0.2.0/JellyfinLoader-0.2.0-v10.10.7.zip",
+        "timestamp": "2025-09-25T14:44:39.125Z",
+        "version": "0.2.0.0"
+      },
+      {
+        "checksum": "72cf82fadd41990bae001c8d4604b23c",
+        "changelog": "",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/stenlan/JellyfinLoader/releases/download/v0.2.0/JellyfinLoader-0.2.0-v10.11.0-rc6.zip",
+        "timestamp": "2025-09-25T14:44:39.227Z",
+        "version": "0.2.0.0"
+      },
+      {
         "checksum": "12e4eaef6e1772c0867346ac0993fdb1",
         "changelog": "",
         "targetAbi": "10.10.7.0",
