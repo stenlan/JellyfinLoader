@@ -48,10 +48,10 @@ jobs:
           dotnet publish JellyfinLoader/JellyfinLoader-10.10.7.csproj
           dotnet publish JLTrampoline/JLTrampoline-10.10.7.csproj
       - name: Package releases
+        working-directory: .
         env:
           newVersion: ${{ steps.increase_version.outputs.NEW_VERSION }}
-        run: |
-          node .github/node/package-releases.js
+        run: node .github/node/package-releases.js
       - name: Push updated files
         run: |
           git config --global user.name "${{ github.triggering_actor }}"
