@@ -26,6 +26,9 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '24.x'
+      - name: Run npm install
+        working-directory: .github/node
+        run: npm ci
       - name: Setup dotnet
         uses: actions/setup-dotnet@v5
         with:
@@ -50,6 +53,11 @@ jobs:
         run: |
           npm install archiver --save
           node .github/node/package-releases.js
+      - name: Push updated files
+        run: |
+          git config --global user.name "${{ github.triggering_actor }}"
+          git commit -am "Release v${{ steps.increase_version.outputs.NEW_VERSION }}"
+          git push
       - name: Release to GitHub
         uses: softprops/action-gh-release@v2.3.3
         with:
@@ -57,8 +65,3 @@ jobs:
           tag_name: v${{ steps.increase_version.outputs.NEW_VERSION }}
           name: Release v${{ steps.increase_version.outputs.NEW_VERSION }}
           target_commitish: ${{github.ref_name}}
-      - name: Push updated files
-        run: |
-          git config --global user.name "${{ github.triggering_actor }}"
-          git commit -am "Release v${{ steps.increase_version.outputs.NEW_VERSION }}"
-          git push

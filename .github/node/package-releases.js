@@ -1,5 +1,5 @@
 import {readFile, writeFile, readdir } from "fs/promises";
-import * as archiver from "archiver";
+import archiver from "archiver";
 import { createHash } from "crypto";
 import { createReadStream, createWriteStream } from "fs";
 import { once } from "events";
@@ -8,9 +8,11 @@ function createZipFile(fileName, adder) {
     const archive = archiver('zip');
     adder(archive);
     const writeStream = createWriteStream(fileName);
+    const res = once(writeStream, 'close');
     archive.pipe(writeStream);
+    archive.finalize();
 
-    return once(writeStream, 'close');
+    return res;
 }
 
 function md5sum(path) {
@@ -34,7 +36,7 @@ const newVersions = [];
 
 for (const jfVersion of jfVersions) {
     const sharedVersionPath = `JellyfinLoader/build/${jfVersion}/bin/dep/tree/SharedVersion.cs`;
-    const assemblyVersion = (await readFile(sharedVersionPath)).match(/AssemblyVersion\("([\d.]+?)"\)/)[1];
+    const assemblyVersion = (await readFile(sharedVersionPath, "utf-8")).match(/AssemblyVersion\("([\d.]+?)"\)/)[1];
     const fullAssemblyVersion = assemblyVersion + ".0";
     const newMetaJSON = {...metaJSON};
     newMetaJSON.version = newVersion + ".0";
@@ -43,7 +45,7 @@ for (const jfVersion of jfVersions) {
 
     await writeFile(`${distFolder}/${jfVersion}/meta.json`, JSON.stringify(newMetaJSON, null, 2));
 
-    const zipName = `JellyfinLoader-v${newVersion}-${jfVersion}.zip`;
+    const zipName = `JellyfinLoader-${newVersion}-${jfVersion}.zip`;
     const outputPath = `${distFolder}/${zipName}`;
     await createZipFile(outputPath, (archive) => archive.directory(`${distFolder}/${jfVersion}/`));
 
